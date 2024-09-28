@@ -11,7 +11,7 @@ void detectAndReplaceFaces(cv::Mat &image, cv::Mat &catEmoji)
     gpuImage.upload(image);
     cv::cuda::cvtColor(gpuImage, gpuGray, cv::COLOR_BGR2GRAY);
 
-    // Load the Haar Cascade face detector (assumes the file is in the current directory)
+    // Load the Haar Cascade face detector
     cv::Ptr<cv::cuda::CascadeClassifier> faceCascade = cv::cuda::CascadeClassifier::create("haarcascade_frontalface_default.xml");
 
     // Detect faces
