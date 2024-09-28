@@ -4,3 +4,14 @@
 *.ptx
 *.cubin
 *.fatbin
+
+# Ignore build artifacts
+build/
+*.o
+*.so
+*.out
+*.exe
+
+# Ignore temporary files
+*.log
+*.tmp
