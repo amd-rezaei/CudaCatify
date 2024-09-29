@@ -61,14 +61,15 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
     }
 
     // Step 2: Get binding names dynamically
-    const char *inputTensorName = nullptr;
-    const char *outputTensorName = nullptr;
+    const char *inputTensorName = "input_0";
+    const char *outputTensorName = "output_0";
 
+    // Iterate over all tensors and find input/output names
     // Iterate over all tensors and find input/output names
     for (int i = 0; i < engine->getNbIOTensors(); ++i)
     {
         const char *tensorName = engine->getIOTensorName(i);
-        if (engine->getTensorMode(tensorName) == nvinfer1::TensorIOMode::kINPUT)
+        if (engine->getTensorIOMode(tensorName) == nvinfer1::TensorIOMode::kINPUT) // Fix: getTensorIOMode
         {
             inputTensorName = tensorName;
         }
