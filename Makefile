@@ -67,4 +67,5 @@ $(TARGET): $(OBJS) | $(BIN_DIR)
 
 # Clean up build files
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR) $(ENGINE_FILE)
+	rm -rf $(OBJ_DIR) $(BIN_DIR) 
+# $(ENGINE_FILE)

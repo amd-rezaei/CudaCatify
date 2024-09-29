@@ -49,7 +49,6 @@ nvinfer1::ICudaEngine *load_engine(const std::string &engine_file, nvinfer1::IRu
     return runtime->deserializeCudaEngine(engine_data.data(), fsize); // Deserialize engine
 }
 
-// Run inference on the loaded engine
 std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *input_data, int input_size)
 {
     // Step 1: Create Execution Context
@@ -109,8 +108,30 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
     // Step 9: Parse Output to BoundingBox (for both outputs if needed)
     std::vector<BoundingBox> detected_faces;
 
-    // TODO: Parse output_data_1 and output_data_2 to retrieve bounding boxes
-    // Example: detected_faces.push_back({x, y, width, height});
+    // Assuming output_data_1 contains the bounding box coordinates in YOLO format
+    // and output_data_2 contains the confidence scores or class probabilities
+    int num_boxes = output_size_1 / 4; // Assuming each box has 4 values: (x, y, width, height)
+
+    // Loop over the boxes
+    for (int i = 0; i < num_boxes; ++i)
+    {
+        int idx = i * 4;
+        float x = output_data_1[idx];          // x-coordinate
+        float y = output_data_1[idx + 1];      // y-coordinate
+        float width = output_data_1[idx + 2];  // width
+        float height = output_data_1[idx + 3]; // height
+
+        // Retrieve confidence from output_data_2
+        float confidence = output_data_2[i];
+
+        // Only consider bounding boxes with a high confidence score (e.g., > 0.5)
+        if (confidence > 0.5)
+        {
+            // Store the bounding box
+            BoundingBox face = {static_cast<int>(x), static_cast<int>(y), static_cast<int>(width), static_cast<int>(height)};
+            detected_faces.push_back(face);
+        }
+    }
 
     // Step 10: Clean Up
     cudaFree(buffers[0]);
