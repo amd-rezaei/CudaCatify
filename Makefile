@@ -1,28 +1,55 @@
-# Compiler settings
-NVCC = /usr/local/cuda/bin/nvcc
+# Compiler and flags
+NVCC = nvcc
 CXX = g++
+CXXFLAGS = -std=c++11 -O2
 
-# Compiler flags
-CXXFLAGS = -O2 -std=c++11
-NVCCFLAGS = -arch=sm_50 -O2 --use_fast_math
+# CUDA and TensorRT paths
+# CUDA and TensorRT paths
+CUDA_PATH ?= /usr/local/cuda-12.4
+TENSORRT_PATH ?= /usr
 
-# Directories
-INCLUDES = -I/usr/local/cuda/include -I./include -I/home/amd/Projects/CudaCatify/workspace/opencv-4.9.0/include
+# CUDA and TensorRT libraries
+CUDA_LIBS = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnppc -lnppial -lnppicc -lnppidei -lnvjpeg
+TENSORRT_LIBS = -L$(TENSORRT_PATH)/include/x86_64-linux-gnu -lnvinfer -lnvinfer_plugin -lnvparsers -lnvonnxparser
 
-LIBS = -L/usr/local/cuda/lib64 -L/usr/lib/x86_64-linux-gnu/ -lcudart -lopencv_core -lopencv_imgcodecs -lopencv_imgproc
 
-# Files and target
-TARGET = cuda-cat-face-swap
-SRCS = src/main.cpp src/utils.cpp
-CU_SRCS = src/face_swap.cu
+# Include paths
+INCLUDE_PATHS = -I$(CUDA_PATH)/include -I$(TENSORRT_PATH)/include -I./include
 
-# Rules
+# Source files
+SRC_DIR = src
+OBJ_DIR = obj
+BIN_DIR = bin
+INCLUDE_DIR = include
+
+SRCS = $(SRC_DIR)/main.cpp $(SRC_DIR)/face_swap.cu $(SRC_DIR)/utils.cpp
+OBJS = $(OBJ_DIR)/main.o $(OBJ_DIR)/face_swap.o $(OBJ_DIR)/utils.o
+
+# Output executable
+TARGET = $(BIN_DIR)/face_swap
+
+# Compilation rules
 all: $(TARGET)
 
-# Rule to compile CUDA and C++ source files
-$(TARGET): $(SRCS) $(CU_SRCS)
-	$(NVCC) $(NVCCFLAGS) $(INCLUDES) $(SRCS) $(CU_SRCS) -o $(TARGET) $(LIBS)
+# Create the directories if they don't exist
+$(OBJ_DIR):
+	mkdir -p $(OBJ_DIR)
 
-# Clean up object files and the executable
+$(BIN_DIR):
+	mkdir -p $(BIN_DIR)
+
+# Compile the object files for CUDA
+$(OBJ_DIR)/face_swap.o: $(SRC_DIR)/face_swap.cu $(INCLUDE_DIR)/face_swap.h | $(OBJ_DIR)
+	$(NVCC) $(INCLUDE_PATHS) -c $< -o $@
+
+# Compile the object files for C++ sources
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp $(INCLUDE_DIR)/face_swap.h | $(OBJ_DIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATHS) -c $< -o $@
+
+# Link the object files into the final executable
+$(TARGET): $(OBJS) | $(BIN_DIR)
+	$(NVCC) $(OBJS) $(CUDA_LIBS) $(TENSORRT_LIBS) -o $@
+
+# Clean up build files
 clean:
-	rm -f $(TARGET) *.o
+	rm -rf $(OBJ_DIR) $(BIN_DIR)

@@ -1,30 +1,37 @@
-#include <opencv2/opencv.hpp>
 #include "face_swap.h"
+#include <iostream>
+
+// Use the TensorRT namespace explicitly or define a namespace alias
+using namespace nvinfer1;
 
 int main()
 {
-    // Load the input image
-    cv::Mat inputImage = cv::imread("data/input/input_image.jpg");
-    if (inputImage.empty())
+    // Load TensorRT engine
+    ICudaEngine *engine = load_engine("yolov4-tiny.engine");
+
+    // Load input image into GPU
+    unsigned char *d_image = load_image_to_gpu("images/input_image.jpg");
+
+    // Run YOLO object detection
+    std::vector<BoundingBox> faces = run_inference(engine, d_image, 640 * 640 * 3);
+
+    // Load kitty emoji into GPU
+    unsigned char *d_kitty_emoji = load_kitty_to_gpu("images/kitty_emoji.png");
+
+    // Replace each detected face with the kitty emoji
+    for (const auto &face : faces)
     {
-        std::cerr << "Error: Could not load input image." << std::endl;
-        return -1;
+        replace_with_kitty(d_image, 640, 640, face, d_kitty_emoji, 64, 64); // Assuming 64x64 kitty emoji
     }
 
-    // Load the cat emoji image (assumed to have transparency)
-    cv::Mat catEmoji = cv::imread("data/input/cat_emoji.png", cv::IMREAD_UNCHANGED);
-    if (catEmoji.empty())
-    {
-        std::cerr << "Error: Could not load cat emoji image." << std::endl;
-        return -1;
-    }
+    // Save the modified image back to disk
+    write_image_from_gpu("images/output_image.jpg", d_image);
 
-    // Detect faces and replace them with the cat emoji using CUDA
-    detectAndReplaceFaces(inputImage, catEmoji);
+    // Free resources
+    cudaFree(d_image);
+    cudaFree(d_kitty_emoji);
 
-    // Save the output image
-    cv::imwrite("data/output/output_image.jpg", inputImage);
+    // No need to explicitly release engine, just let it go out of scope
 
-    std::cout << "Processing completed. Check the output in data/output/output_image.jpg" << std::endl;
     return 0;
 }
