@@ -4,6 +4,78 @@
 #include <iostream>
 #include <fstream>
 #include <memory>
+#include <vector>
+#include <map>   // For storing class labels
+#include <cmath> // For std::isnan and std::isinf
+
+// Define constants for YOLO input size
+const int YOLO_INPUT_WIDTH = 416;
+const int YOLO_INPUT_HEIGHT = 416;
+
+// Function to validate input data
+bool isInputDataValid(const void *input_data_void, size_t input_size)
+{
+    // Print the input data pointer and size
+    std::cout << "Validating input data pointer: " << input_data_void << std::endl;
+    std::cout << "Input data size in bytes: " << input_size << std::endl;
+
+    if (input_data_void == nullptr)
+    {
+        std::cerr << "Input data pointer is null!" << std::endl;
+        return false;
+    }
+
+    // Check if input_size is valid (not zero)
+    if (input_size == 0)
+    {
+        std::cerr << "Input data size is zero!" << std::endl;
+        return false;
+    }
+
+    // Check for negative or excessively large input_size
+    if (input_size > 10 * 1024 * 1024) // Arbitrary large size limit
+    {
+        std::cerr << "Input data size is suspiciously large!" << std::endl;
+        return false;
+    }
+
+    // Assume input data is float
+    size_t num_elements = input_size / sizeof(float);
+
+    // Debugging: Print the first few bytes as raw data
+    const unsigned char *raw_data = static_cast<const unsigned char *>(input_data_void);
+    std::cout << "First few raw input bytes: ";
+    for (size_t i = 0; i < std::min(input_size, size_t(10)); ++i)
+    {
+        std::cout << std::hex << static_cast<int>(raw_data[i]) << " ";
+    }
+    std::cout << std::dec << std::endl;
+
+    // Print the first few float elements
+    const float *input_data = static_cast<const float *>(input_data_void);
+    std::cout << "First few input elements as float: ";
+    for (size_t i = 0; i < std::min(num_elements, size_t(10)); ++i)
+    {
+        std::cout << input_data[i] << " ";
+    }
+    std::cout << std::endl;
+
+    return true;
+}
+
+// Function to check if bounding boxes and confidence scores are valid
+bool isOutputDataValid(const std::vector<float> &output_data)
+{
+    for (size_t i = 0; i < output_data.size(); ++i)
+    {
+        if (std::isnan(output_data[i]) || std::isinf(output_data[i]))
+        {
+            std::cerr << "Invalid value detected in output data at index " << i << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
 
 // Implement the logger
 class Logger : public nvinfer1::ILogger
@@ -20,6 +92,17 @@ public:
 
 // Global logger instance
 Logger gLogger;
+
+// Define class labels (for example, for YOLO this can be based on COCO dataset)
+std::map<int, std::string> class_labels = {
+    {0, "Person"},
+    {1, "Bicycle"},
+    {2, "Car"},
+    {3, "Motorbike"},
+    {4, "Airplane"},
+    {5, "Bus"},
+    // ... Add more labels as per your model
+};
 
 // Helper function to calculate total number of elements from tensor dimensions
 size_t calculate_num_elements(const nvinfer1::Dims &dims)
@@ -54,6 +137,7 @@ size_t get_dtype_size(nvinfer1::DataType dtype)
 // Load TensorRT engine from file
 nvinfer1::ICudaEngine *load_engine(const std::string &engine_file, nvinfer1::IRuntime *&runtime)
 {
+    // Open the engine file in binary mode
     std::ifstream engineFile(engine_file, std::ios::binary);
     if (!engineFile)
     {
@@ -61,13 +145,33 @@ nvinfer1::ICudaEngine *load_engine(const std::string &engine_file, nvinfer1::IRu
         return nullptr;
     }
 
+    // Get the size of the engine file
     engineFile.seekg(0, engineFile.end);
     long int fsize = engineFile.tellg();
     engineFile.seekg(0, engineFile.beg);
 
+    // Log the file size for debugging
+    std::cout << "Engine file size: " << fsize << " bytes" << std::endl;
+
+    // Check if the file size is valid
+    if (fsize <= 0)
+    {
+        std::cerr << "Invalid engine file size: " << fsize << std::endl;
+        return nullptr;
+    }
+
+    // Read the file contents into a buffer
     std::vector<char> engine_data(fsize);
     engineFile.read(engine_data.data(), fsize);
 
+    // Check if the file was read successfully
+    if (!engineFile)
+    {
+        std::cerr << "Failed to read engine file: " << engine_file << std::endl;
+        return nullptr;
+    }
+
+    // Create the TensorRT runtime
     runtime = nvinfer1::createInferRuntime(gLogger);
     if (!runtime)
     {
@@ -75,13 +179,30 @@ nvinfer1::ICudaEngine *load_engine(const std::string &engine_file, nvinfer1::IRu
         return nullptr;
     }
 
-    return runtime->deserializeCudaEngine(engine_data.data(), fsize); // Deserialize engine
+    // Deserialize the engine
+    nvinfer1::ICudaEngine *engine = runtime->deserializeCudaEngine(engine_data.data(), fsize);
+    if (!engine)
+    {
+        std::cerr << "Failed to deserialize CUDA engine" << std::endl;
+        return nullptr;
+    }
+
+    return engine;
 }
 
-// Run inference on the loaded engine using enqueueV3
+// Function to check for CUDA errors
+void checkCudaError(const char *message)
+{
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        std::cerr << message << ": " << cudaGetErrorString(err) << std::endl;
+        exit(1);
+    }
+}
+
 std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *input_data, int input_size)
 {
-    // Step 1: Create Execution Context
     nvinfer1::IExecutionContext *context = engine->createExecutionContext();
     if (!context)
     {
@@ -89,134 +210,146 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
         return {};
     }
 
-    // Step 2: Set the binding indices manually (input is index 0, outputs are 1 and 2)
-    int inputIndex = 0;   // Input tensor is at binding index 0
-    int outputIndex1 = 1; // First output tensor is at binding index 1
-    int outputIndex2 = 2; // Second output tensor is at binding index 2
+    int inputIndex = 0;
+    int outputIndex1 = 1; // For bounding boxes
+    int outputIndex2 = 2; // For confidence scores
 
-    // Retrieve the tensor shapes and data types
     nvinfer1::Dims input_dims = engine->getTensorShape("input_0");
     nvinfer1::Dims output_dims1 = engine->getTensorShape("output_0");
     nvinfer1::Dims output_dims2 = engine->getTensorShape("1030");
 
-    nvinfer1::DataType input_dtype = engine->getTensorDataType("input_0");
-    nvinfer1::DataType output_dtype1 = engine->getTensorDataType("output_0");
-    nvinfer1::DataType output_dtype2 = engine->getTensorDataType("1030");
+    size_t input_size_bytes = calculate_num_elements(input_dims) * get_dtype_size(engine->getTensorDataType("input_0"));
+    size_t output_size_bytes1 = calculate_num_elements(output_dims1) * get_dtype_size(engine->getTensorDataType("output_0"));
+    size_t output_size_bytes2 = calculate_num_elements(output_dims2) * get_dtype_size(engine->getTensorDataType("1030"));
 
-    // Calculate buffer sizes dynamically
-    size_t input_size_bytes = calculate_num_elements(input_dims) * get_dtype_size(input_dtype);
-    size_t output_size_bytes1 = calculate_num_elements(output_dims1) * get_dtype_size(output_dtype1);
-    size_t output_size_bytes2 = calculate_num_elements(output_dims2) * get_dtype_size(output_dtype2);
+    std::cout << "Input tensor size: " << input_size_bytes << " bytes" << std::endl;
+    std::cout << "Output bounding boxes size: " << output_size_bytes1 << " bytes" << std::endl;
+    std::cout << "Output confidence scores size: " << output_size_bytes2 << " bytes" << std::endl;
 
-    // Check if input size bytes match the input data size
     if (input_size_bytes != input_size)
     {
-        std::cerr << "Input size mismatch! Calculated: " << input_size_bytes << " bytes, Provided: " << input_size << " bytes." << std::endl;
+        std::cerr << "Input size mismatch!" << std::endl;
         return {};
     }
 
-    // Allocate device memory for input and outputs
     void *buffers[3];
+
+    // Allocate memory for input and output buffers
     if (cudaMalloc(&buffers[inputIndex], input_size_bytes) != cudaSuccess)
     {
-        std::cerr << "Failed to allocate memory for input buffer" << std::endl;
+        std::cerr << "Failed to allocate CUDA memory for input" << std::endl;
         return {};
     }
+    checkCudaError("After cudaMalloc for input");
 
     if (cudaMalloc(&buffers[outputIndex1], output_size_bytes1) != cudaSuccess)
     {
-        std::cerr << "Failed to allocate memory for output buffer 1" << std::endl;
+        std::cerr << "Failed to allocate CUDA memory for output bounding boxes" << std::endl;
+        cudaFree(buffers[inputIndex]);
         return {};
     }
+    checkCudaError("After cudaMalloc for output bounding boxes");
 
     if (cudaMalloc(&buffers[outputIndex2], output_size_bytes2) != cudaSuccess)
     {
-        std::cerr << "Failed to allocate memory for output buffer 2" << std::endl;
+        std::cerr << "Failed to allocate CUDA memory for output confidence scores" << std::endl;
+        cudaFree(buffers[inputIndex]);
+        cudaFree(buffers[outputIndex1]);
         return {};
     }
+    checkCudaError("After cudaMalloc for output confidence scores");
 
-    // Copy input data to GPU
-    std::cout << "Copying input data to GPU: " << input_size_bytes << " bytes" << std::endl;
-    if (cudaMemcpy(buffers[inputIndex], input_data, input_size_bytes, cudaMemcpyHostToDevice) != cudaSuccess)
+    printf("Allocated memory for input and output tensors\n");
+
+    printf("Checking input data for validity\n");
+
+    if (!isInputDataValid(input_data, input_size_bytes))
     {
-        std::cerr << "Failed to copy input data to GPU!" << std::endl;
+        std::cerr << "Invalid input data detected." << std::endl;
         return {};
     }
 
-    // Step 3: Create CUDA stream
+    printf("Input data is valid\n");
+
+    // Copy input data to the device
+    cudaMemcpy(buffers[inputIndex], input_data, input_size_bytes, cudaMemcpyHostToDevice);
+    checkCudaError("After cudaMemcpy for input data");
+    std::cout << "Input data copied to GPU" << std::endl;
+
     cudaStream_t stream;
-    if (cudaStreamCreate(&stream) != cudaSuccess)
-    {
-        std::cerr << "Failed to create CUDA stream" << std::endl;
-        return {};
-    }
+    cudaStreamCreate(&stream);
 
-    // Step 4: Set tensor addresses
-    if (!context->setInputTensorAddress("input_0", buffers[inputIndex]))
-    {
-        std::cerr << "Failed to set input tensor address" << std::endl;
-        return {};
-    }
+    context->setInputTensorAddress("input_0", buffers[inputIndex]);
+    context->setOutputTensorAddress("output_0", buffers[outputIndex1]);
+    context->setOutputTensorAddress("1030", buffers[outputIndex2]);
 
-    if (!context->setOutputTensorAddress("output_0", buffers[outputIndex1]))
-    {
-        std::cerr << "Failed to set output tensor address 1" << std::endl;
-        return {};
-    }
-
-    if (!context->setOutputTensorAddress("1030", buffers[outputIndex2]))
-    {
-        std::cerr << "Failed to set output tensor address 2" << std::endl;
-        return {};
-    }
-
-    // Step 5: Enqueue inference using enqueueV3
     if (!context->enqueueV3(stream))
     {
-        std::cerr << "Failed to enqueue inference using enqueueV3" << std::endl;
+        std::cerr << "Failed to enqueue inference." << std::endl;
         return {};
     }
-
-    // Synchronize the stream to wait for inference to complete
     cudaStreamSynchronize(stream);
+    checkCudaError("After inference");
 
-    // Step 6: Copy output data from GPU to host
+    std::cout << "Inference completed, copying output data" << std::endl;
+
     std::vector<float> output_data_1(calculate_num_elements(output_dims1));
-    if (cudaMemcpy(output_data_1.data(), buffers[outputIndex1], output_size_bytes1, cudaMemcpyDeviceToHost) != cudaSuccess)
-    {
-        std::cerr << "Failed to copy output_0 from GPU to host" << std::endl;
-        return {};
-    }
-
     std::vector<float> output_data_2(calculate_num_elements(output_dims2));
-    if (cudaMemcpy(output_data_2.data(), buffers[outputIndex2], output_size_bytes2, cudaMemcpyDeviceToHost) != cudaSuccess)
+
+    cudaMemcpy(output_data_1.data(), buffers[outputIndex1], output_size_bytes1, cudaMemcpyDeviceToHost);
+    checkCudaError("After cudaMemcpy for output bounding boxes");
+    cudaMemcpy(output_data_2.data(), buffers[outputIndex2], output_size_bytes2, cudaMemcpyDeviceToHost);
+    checkCudaError("After cudaMemcpy for output confidence scores");
+
+    if (!isOutputDataValid(output_data_1) || !isOutputDataValid(output_data_2))
     {
-        std::cerr << "Failed to copy output_1030 from GPU to host" << std::endl;
+        std::cerr << "Invalid output data detected!" << std::endl;
         return {};
     }
 
-    // Parse output to bounding boxes (assume output_data_1 has bounding boxes and output_data_2 has confidence scores)
     std::vector<BoundingBox> detected_faces;
-    int num_boxes = output_data_1.size() / 4; // Assuming each box has 4 values: x, y, width, height
+    int num_boxes = output_data_1.size() / 4;
 
     for (int i = 0; i < num_boxes; ++i)
     {
         int idx = i * 4;
-        float x = output_data_1[idx];          // x-coordinate
-        float y = output_data_1[idx + 1];      // y-coordinate
-        float width = output_data_1[idx + 2];  // width
-        float height = output_data_1[idx + 3]; // height
+        if (idx >= output_data_1.size())
+            break;
 
-        float confidence = output_data_2[i]; // Assuming confidence is in the second output
+        float x = output_data_1[idx];
+        float y = output_data_1[idx + 1];
+        float width = output_data_1[idx + 2];
+        float height = output_data_1[idx + 3];
 
-        if (confidence > 0.5)
-        { // Example confidence threshold
-            BoundingBox face = {static_cast<int>(x), static_cast<int>(y), static_cast<int>(width), static_cast<int>(height)};
-            detected_faces.push_back(face);
+        if (x < 0 || y < 0 || width <= 0 || height <= 0 || (x + width) > YOLO_INPUT_WIDTH || (y + height) > YOLO_INPUT_HEIGHT)
+        {
+            std::cerr << "Skipping invalid bounding box: (" << x << ", " << y << ", " << width << ", " << height << ")" << std::endl;
+            continue;
+        }
+
+        float max_score = 0.0f;
+        int best_class = -1;
+
+        for (int c = 0; c < 80; ++c)
+        {
+            int score_index = i * 80 + c;
+            if (score_index >= output_data_2.size())
+                break;
+
+            float score = output_data_2[score_index];
+            if (score > max_score)
+            {
+                max_score = score;
+                best_class = c;
+            }
+        }
+
+        if (best_class == 0 && max_score > 0.5)
+        {
+            detected_faces.push_back({static_cast<int>(x), static_cast<int>(y), static_cast<int>(width), static_cast<int>(height)});
         }
     }
 
-    // Step 7: Clean up
     cudaFree(buffers[inputIndex]);
     cudaFree(buffers[outputIndex1]);
     cudaFree(buffers[outputIndex2]);

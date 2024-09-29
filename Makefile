@@ -1,7 +1,8 @@
 # Compiler and flags
 NVCC = nvcc
 CXX = g++
-CXXFLAGS = -std=c++11 -O2
+CXXFLAGS = -std=c++11 -O2 -g  # Enable debugging with -g
+NVCCFLAGS = -g -G  # Enable device-side debugging with -G
 
 # CUDA and TensorRT paths
 CUDA_PATH ?= /usr/local/cuda-12.4
@@ -28,8 +29,8 @@ SRC_DIR = src
 OBJ_DIR = obj
 BIN_DIR = bin
 
-SRCS = $(SRC_DIR)/main.cpp $(SRC_DIR)/face_swap.cu $(SRC_DIR)/utils.cpp $(SRC_DIR)/stb_image_implementation.cpp
-OBJS = $(OBJ_DIR)/main.o $(OBJ_DIR)/face_swap.o $(OBJ_DIR)/utils.o $(OBJ_DIR)/stb_image_implementation.o
+SRCS = $(SRC_DIR)/main.cpp $(SRC_DIR)/face_swap.cu $(SRC_DIR)/utils.cpp $(SRC_DIR)/stb_image_implementation.cpp $(SRC_DIR)/utils_model.cu
+OBJS = $(OBJ_DIR)/main.o $(OBJ_DIR)/face_swap.o $(OBJ_DIR)/utils.o $(OBJ_DIR)/stb_image_implementation.o $(OBJ_DIR)/utils_model.o
 
 # Output executable
 TARGET = $(BIN_DIR)/face_swap
@@ -60,7 +61,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
 
 # Compile the object files for CUDA sources
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cu | $(OBJ_DIR)
-	$(NVCC) $(INCLUDE_PATHS) -c $< -o $@
+	$(NVCC) $(NVCCFLAGS) $(INCLUDE_PATHS) -c $< -o $@
 
 # Link the object files into the final executable
 $(TARGET): $(OBJS) | $(BIN_DIR)
@@ -68,5 +69,4 @@ $(TARGET): $(OBJS) | $(BIN_DIR)
 
 # Clean up build files
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR) 
-# $(ENGINE_FILE)
+	rm -rf $(OBJ_DIR) $(BIN_DIR)
