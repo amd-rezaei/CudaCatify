@@ -7,8 +7,9 @@ CXXFLAGS = -std=c++11 -O2
 CUDA_PATH ?= /usr/local/cuda-12.4
 TENSORRT_PATH ?= /usr/lib/x86_64-linux-gnu
 
-# Libraries for CUDA and TensorRT
-CUDA_LIBS = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnppc -lnppial -lnppicc -lnppidei -lnvjpeg
+# Libraries for CUDA, TensorRT, and NPP (NVIDIA Performance Primitives)
+CUDA_LIBS = -L$(CUDA_PATH)/lib64 -lcudart -lcuda
+NPP_LIBS = -lnppc -lnppial -lnppicc -lnppidei -lnppif -lnppig -lnppim -lnppist -lnppisu -lnppitc -lnpps -lnvjpeg
 TENSORRT_LIBS = -L$(TENSORRT_PATH) -lnvinfer -lnvinfer_plugin -lnvonnxparser
 
 # Include paths
@@ -63,7 +64,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cu | $(OBJ_DIR)
 
 # Link the object files into the final executable
 $(TARGET): $(OBJS) | $(BIN_DIR)
-	$(NVCC) $(OBJS) $(CUDA_LIBS) $(TENSORRT_LIBS) -o $@
+	$(NVCC) $(OBJS) $(CUDA_LIBS) $(NPP_LIBS) $(TENSORRT_LIBS) -o $@
 
 # Clean up build files
 clean:
