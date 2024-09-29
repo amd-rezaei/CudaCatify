@@ -27,8 +27,8 @@ SRC_DIR = src
 OBJ_DIR = obj
 BIN_DIR = bin
 
-SRCS = $(SRC_DIR)/main.cpp $(SRC_DIR)/face_swap.cu $(SRC_DIR)/utils.cpp
-OBJS = $(OBJ_DIR)/main.o $(OBJ_DIR)/face_swap.o $(OBJ_DIR)/utils.o
+SRCS = $(SRC_DIR)/main.cpp $(SRC_DIR)/face_swap.cu $(SRC_DIR)/utils.cpp $(SRC_DIR)/stb_image_implementation.cpp
+OBJS = $(OBJ_DIR)/main.o $(OBJ_DIR)/face_swap.o $(OBJ_DIR)/utils.o $(OBJ_DIR)/stb_image_implementation.o
 
 # Output executable
 TARGET = $(BIN_DIR)/face_swap

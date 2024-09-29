@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-// Use the TensorRT namespace explicitly or define a namespace alias
+// Use the TensorRT namespace explicitly
 using namespace nvinfer1;
 
 int main(int argc, char *argv[])
@@ -15,13 +15,14 @@ int main(int argc, char *argv[])
     }
 
     // Parse arguments
-    std::string engine_file = argv[1];  // Path to TensorRT engine file (e.g., yolov4-tiny.engine)
-    std::string input_image = argv[2];  // Path to input image (e.g., images/input_image.jpg)
-    std::string kitty_emoji = argv[3];  // Path to kitty emoji (e.g., images/kitty_emoji.png)
-    std::string output_image = argv[4]; // Path to output image (e.g., images/output_image.jpg)
+    std::string engine_file = argv[1];
+    std::string input_image = argv[2];
+    std::string kitty_emoji = argv[3];
+    std::string output_image = argv[4];
 
     // Load TensorRT engine
-    ICudaEngine *engine = load_engine(engine_file);
+    IRuntime *runtime = nullptr;
+    ICudaEngine *engine = load_engine(engine_file, runtime);
     if (!engine)
     {
         std::cerr << "Failed to load engine: " << engine_file << std::endl;
@@ -29,18 +30,20 @@ int main(int argc, char *argv[])
     }
 
     // Load input image into GPU
-    unsigned char *d_image = load_image_to_gpu(input_image);
+    int img_width, img_height;
+    unsigned char *d_image = load_image_to_gpu(input_image, img_width, img_height);
     if (!d_image)
     {
         std::cerr << "Failed to load input image: " << input_image << std::endl;
         return 1;
     }
 
-    // Run YOLO object detection
-    std::vector<BoundingBox> faces = run_inference(engine, d_image, 640 * 640 * 3);
+    // Run YOLO object detection using yolov4-tiny.engine
+    std::vector<BoundingBox> faces = run_inference(engine, d_image, img_width * img_height * 3);
 
     // Load kitty emoji into GPU
-    unsigned char *d_kitty_emoji = load_kitty_to_gpu(kitty_emoji);
+    int kitty_width, kitty_height;
+    unsigned char *d_kitty_emoji = load_kitty_to_gpu(kitty_emoji, kitty_width, kitty_height);
     if (!d_kitty_emoji)
     {
         std::cerr << "Failed to load kitty emoji: " << kitty_emoji << std::endl;
@@ -51,15 +54,19 @@ int main(int argc, char *argv[])
     // Replace each detected face with the kitty emoji
     for (const auto &face : faces)
     {
-        replace_with_kitty(d_image, 640, 640, face, d_kitty_emoji, 64, 64); // Assuming 64x64 kitty emoji
+        replace_with_kitty(d_image, img_width, img_height, face, d_kitty_emoji, kitty_width, kitty_height);
     }
 
     // Save the modified image back to disk
-    write_image_from_gpu(output_image, d_image);
+    if (!write_image_from_gpu(output_image, d_image, img_width, img_height))
+    {
+        std::cerr << "Failed to write output image: " << output_image << std::endl;
+    }
 
     // Free resources
     cudaFree(d_image);
     cudaFree(d_kitty_emoji);
+    // runtime->destroy();
 
     return 0;
 }

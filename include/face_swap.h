@@ -6,7 +6,8 @@
 #include <NvInfer.h>
 
 // Bounding box struct for detected faces
-struct BoundingBox {
+struct BoundingBox
+{
     int x, y, width, height;
 };
 
@@ -14,9 +15,9 @@ struct BoundingBox {
 nvinfer1::ICudaEngine *load_engine(const std::string &engine_file, nvinfer1::IRuntime *&runtime);
 
 // CUDA image loading and processing functions
-unsigned char *load_image_to_gpu(const std::string &file_path);
-unsigned char *load_kitty_to_gpu(const std::string &file_path);
-bool write_image_from_gpu(const std::string &file_path, unsigned char *d_image);
+unsigned char *load_image_to_gpu(const std::string &file_path, int &width, int &height);
+unsigned char *load_kitty_to_gpu(const std::string &file_path, int &width, int &height);
+bool write_image_from_gpu(const std::string &file_path, unsigned char *d_image, int width, int height);
 
 // TensorRT inference function
 std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *input_data, int input_size);
