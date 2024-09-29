@@ -60,46 +60,30 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
         return {};
     }
 
-    // Step 2: Get binding names dynamically
+    // Step 2: Use the correct input/output tensor names found from Python script
     const char *inputTensorName = "input_0";
-    const char *outputTensorName = "output_0";
+    const char *outputTensorName1 = "output_0";
+    const char *outputTensorName2 = "1030"; // The second output tensor
 
-    // Iterate over all tensors and find input/output names
-    // Iterate over all tensors and find input/output names
-    for (int i = 0; i < engine->getNbIOTensors(); ++i)
-    {
-        const char *tensorName = engine->getIOTensorName(i);
-        if (engine->getTensorIOMode(tensorName) == nvinfer1::TensorIOMode::kINPUT) // Fix: getTensorIOMode
-        {
-            inputTensorName = tensorName;
-        }
-        else
-        {
-            outputTensorName = tensorName;
-        }
-    }
-
-    if (!inputTensorName || !outputTensorName)
-    {
-        std::cerr << "Failed to get input/output tensor names from engine" << std::endl;
-        return {};
-    }
-
-    // Step 3: Allocate Device Memory for Input and Output
-    void *buffers[2];
+    // Step 3: Allocate Device Memory for Input and Outputs
+    void *buffers[3];                                                       // Now handling two output buffers
     cudaMalloc(&buffers[0], input_size);                                    // Allocate memory for input
     cudaMemcpy(buffers[0], input_data, input_size, cudaMemcpyHostToDevice); // Copy input data to GPU
 
-    int output_size = 1;                                  // Adjust the output size based on the actual model's output size
-    cudaMalloc(&buffers[1], output_size * sizeof(float)); // Allocate memory for output
+    int output_size_1 = 1;                                  // Adjust based on the actual output size of output_0
+    cudaMalloc(&buffers[1], output_size_1 * sizeof(float)); // Allocate memory for output_0
+
+    int output_size_2 = 1;                                  // Adjust based on the actual output size of 1030
+    cudaMalloc(&buffers[2], output_size_2 * sizeof(float)); // Allocate memory for output_1030
 
     // Step 4: Create CUDA stream
     cudaStream_t stream;
     cudaStreamCreate(&stream);
 
-    // Step 5: Set tensor addresses using tensor names
+    // Step 5: Set tensor addresses for both input and outputs
     context->setTensorAddress(inputTensorName, buffers[0]);
-    context->setTensorAddress(outputTensorName, buffers[1]);
+    context->setTensorAddress(outputTensorName1, buffers[1]);
+    context->setTensorAddress(outputTensorName2, buffers[2]);
 
     // Step 6: Enqueue inference using enqueueV3
     if (!context->enqueueV3(stream))
@@ -107,6 +91,7 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
         std::cerr << "Failed to enqueue inference using enqueueV3" << std::endl;
         cudaFree(buffers[0]);
         cudaFree(buffers[1]);
+        cudaFree(buffers[2]);
         cudaStreamDestroy(stream);
         return {};
     }
@@ -115,18 +100,22 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
     cudaStreamSynchronize(stream);
 
     // Step 8: Copy Results from Device to Host
-    std::vector<float> output_data(output_size);
-    cudaMemcpy(output_data.data(), buffers[1], output_size * sizeof(float), cudaMemcpyDeviceToHost);
+    std::vector<float> output_data_1(output_size_1);
+    cudaMemcpy(output_data_1.data(), buffers[1], output_size_1 * sizeof(float), cudaMemcpyDeviceToHost);
 
-    // Step 9: Parse Output to BoundingBox
+    std::vector<float> output_data_2(output_size_2);
+    cudaMemcpy(output_data_2.data(), buffers[2], output_size_2 * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Step 9: Parse Output to BoundingBox (for both outputs if needed)
     std::vector<BoundingBox> detected_faces;
 
-    // TODO: Parse the output_data to retrieve bounding boxes
+    // TODO: Parse output_data_1 and output_data_2 to retrieve bounding boxes
     // Example: detected_faces.push_back({x, y, width, height});
 
     // Step 10: Clean Up
     cudaFree(buffers[0]);
     cudaFree(buffers[1]);
+    cudaFree(buffers[2]);
     cudaStreamDestroy(stream); // Destroy the CUDA stream
 
     return detected_faces;
