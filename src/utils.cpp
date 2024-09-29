@@ -50,11 +50,11 @@ nvinfer1::ICudaEngine *load_engine(const std::string &engine_file, nvinfer1::IRu
     return runtime->deserializeCudaEngine(engine_data.data(), fsize); // Deserialize engine
 }
 
-// Run inference on the loaded engine
+// Run inference on the loaded engine using enqueueV3
 std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *input_data, int input_size)
 {
     // Step 1: Create Execution Context
-    std::unique_ptr<nvinfer1::IExecutionContext> context(engine->createExecutionContext());
+    nvinfer1::IExecutionContext *context = engine->createExecutionContext();
     if (!context)
     {
         std::cerr << "Failed to create execution context" << std::endl;
@@ -62,42 +62,42 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
     }
     std::cout << "Execution context created successfully!" << std::endl;
 
-    // Step 2: Check binding names for input/output tensors
-    std::cout << "Input Tensor: " << engine->getIOTensorName(0) << std::endl;
-    std::cout << "Output Tensor 1: " << engine->getIOTensorName(1) << std::endl;
-    std::cout << "Output Tensor 2: " << engine->getIOTensorName(2) << std::endl;
+    // Step 2: Set the binding indices manually (input is index 0, outputs are 1 and 2)
+    int inputIndex = 0;   // Input tensor is at binding index 0
+    int outputIndex1 = 1; // First output tensor is at binding index 1
+    int outputIndex2 = 2; // Second output tensor is at binding index 2
 
-    const char *inputTensorName = "input_0";
-    const char *outputTensorName1 = "output_0";
-    const char *outputTensorName2 = "1030"; // The second output tensor
+    std::cout << "Input Index: " << inputIndex << ", Output Index 1: " << outputIndex1 << ", Output Index 2: " << outputIndex2 << std::endl;
 
-    // Step 3: Allocate Device Memory for Input and Outputs
+    // Step 3: Allocate device memory for input and outputs
     void *buffers[3];
-    if (cudaMalloc(&buffers[0], input_size) != cudaSuccess)
+    if (cudaMalloc(&buffers[inputIndex], input_size) != cudaSuccess)
     {
         std::cerr << "Failed to allocate memory for input buffer" << std::endl;
         return {};
     }
     std::cout << "Input buffer allocated successfully!" << std::endl;
 
-    if (cudaMemcpy(buffers[0], input_data, input_size, cudaMemcpyHostToDevice) != cudaSuccess)
+    // Copy input data to GPU
+    if (cudaMemcpy(buffers[inputIndex], input_data, input_size, cudaMemcpyHostToDevice) != cudaSuccess)
     {
         std::cerr << "Failed to copy input data to GPU" << std::endl;
         return {};
     }
     std::cout << "Input data copied to GPU successfully!" << std::endl;
 
-    int output_size_1 = 1; // Adjust this based on the actual output size of output_0
-    int output_size_2 = 1; // Adjust this based on the actual output size of 1030
+    // Assuming reasonable output sizes; adjust based on your model
+    int output_size_1 = 1000; // Adjust based on the actual output size
+    int output_size_2 = 1000; // Adjust based on the actual output size
 
-    if (cudaMalloc(&buffers[1], output_size_1 * sizeof(float)) != cudaSuccess)
+    if (cudaMalloc(&buffers[outputIndex1], output_size_1 * sizeof(float)) != cudaSuccess)
     {
         std::cerr << "Failed to allocate memory for output buffer 1" << std::endl;
         return {};
     }
     std::cout << "Output buffer 1 allocated successfully!" << std::endl;
 
-    if (cudaMalloc(&buffers[2], output_size_2 * sizeof(float)) != cudaSuccess)
+    if (cudaMalloc(&buffers[outputIndex2], output_size_2 * sizeof(float)) != cudaSuccess)
     {
         std::cerr << "Failed to allocate memory for output buffer 2" << std::endl;
         return {};
@@ -113,33 +113,17 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
     }
     std::cout << "CUDA stream created successfully!" << std::endl;
 
-    // Step 5: Set tensor addresses for both input and outputs
-    if (!context->setTensorAddress(inputTensorName, buffers[0]))
-    {
-        std::cerr << "Failed to set tensor address for input" << std::endl;
-        return {};
-    }
-    if (!context->setTensorAddress(outputTensorName1, buffers[1]))
-    {
-        std::cerr << "Failed to set tensor address for output_0" << std::endl;
-        return {};
-    }
-    if (!context->setTensorAddress(outputTensorName2, buffers[2]))
-    {
-        std::cerr << "Failed to set tensor address for output_1030" << std::endl;
-        return {};
-    }
-    std::cout << "Tensor addresses set successfully!" << std::endl;
+    // Step 5: Use the `bindings[]` array to reference input and output buffers
+    void *bindings[] = {buffers[inputIndex], buffers[outputIndex1], buffers[outputIndex2]};
 
-    // Step 6: Enqueue inference using enqueueV3
-    std::cout << "Attempting to enqueue inference..." << std::endl;
+    // Step 6: Enqueue inference using `enqueueV3()`
+    std::cout << "Attempting to enqueue inference using enqueueV3..." << std::endl;
     if (!context->enqueueV3(stream))
     {
         std::cerr << "Failed to enqueue inference using enqueueV3" << std::endl;
-        std::cerr << "TensorRT Error: Error Code 1: Cuda Runtime (invalid argument)" << std::endl;
-        cudaFree(buffers[0]);
-        cudaFree(buffers[1]);
-        cudaFree(buffers[2]);
+        cudaFree(buffers[inputIndex]);
+        cudaFree(buffers[outputIndex1]);
+        cudaFree(buffers[outputIndex2]);
         cudaStreamDestroy(stream);
         return {};
     }
@@ -149,9 +133,9 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
     cudaStreamSynchronize(stream);
     std::cout << "CUDA stream synchronized!" << std::endl;
 
-    // Step 8: Copy Results from Device to Host
+    // Step 8: Copy output data from GPU to host
     std::vector<float> output_data_1(output_size_1);
-    if (cudaMemcpy(output_data_1.data(), buffers[1], output_size_1 * sizeof(float), cudaMemcpyDeviceToHost) != cudaSuccess)
+    if (cudaMemcpy(output_data_1.data(), buffers[outputIndex1], output_size_1 * sizeof(float), cudaMemcpyDeviceToHost) != cudaSuccess)
     {
         std::cerr << "Failed to copy output_0 from GPU to host" << std::endl;
         return {};
@@ -159,20 +143,19 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
     std::cout << "Output data 1 copied from GPU to host!" << std::endl;
 
     std::vector<float> output_data_2(output_size_2);
-    if (cudaMemcpy(output_data_2.data(), buffers[2], output_size_2 * sizeof(float), cudaMemcpyDeviceToHost) != cudaSuccess)
+    if (cudaMemcpy(output_data_2.data(), buffers[outputIndex2], output_size_2 * sizeof(float), cudaMemcpyDeviceToHost) != cudaSuccess)
     {
         std::cerr << "Failed to copy output_1030 from GPU to host" << std::endl;
         return {};
     }
     std::cout << "Output data 2 copied from GPU to host!" << std::endl;
 
-    // Step 9: Parse Output to BoundingBox (for both outputs if needed)
+    // Step 9: Parse output to bounding boxes (for both outputs if needed)
     std::vector<BoundingBox> detected_faces;
+    int num_boxes = output_size_1 / 4; // Assuming each box has 4 values: x, y, width, height
 
-    int num_boxes = output_size_1 / 4; // Assuming each box has 4 values: (x, y, width, height)
     std::cout << "Number of boxes detected: " << num_boxes << std::endl;
 
-    // Loop over the boxes
     for (int i = 0; i < num_boxes; ++i)
     {
         int idx = i * 4;
@@ -181,24 +164,22 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
         float width = output_data_1[idx + 2];  // width
         float height = output_data_1[idx + 3]; // height
 
-        // Retrieve confidence from output_data_2
-        float confidence = output_data_2[i];
+        float confidence = output_data_2[i]; // Assuming confidence is in the second output
 
         std::cout << "Box " << i << ": (x: " << x << ", y: " << y << ", w: " << width << ", h: " << height
                   << ", confidence: " << confidence << ")" << std::endl;
 
-        // Only consider bounding boxes with a high confidence score (e.g., > 0.5)
-        if (confidence > 0.5)
+        if (confidence > 0.5) // Example confidence threshold
         {
             BoundingBox face = {static_cast<int>(x), static_cast<int>(y), static_cast<int>(width), static_cast<int>(height)};
             detected_faces.push_back(face);
         }
     }
 
-    // Step 10: Clean Up
-    cudaFree(buffers[0]);
-    cudaFree(buffers[1]);
-    cudaFree(buffers[2]);
+    // Step 10: Clean up
+    cudaFree(buffers[inputIndex]);
+    cudaFree(buffers[outputIndex1]);
+    cudaFree(buffers[outputIndex2]);
     cudaStreamDestroy(stream); // Destroy the CUDA stream
 
     return detected_faces;
