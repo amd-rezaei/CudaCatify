@@ -39,8 +39,8 @@ def build_engine(onnx_file_path, engine_file_path):
     return serialized_engine
 
 if __name__ == "__main__":
-    onnx_model_path = "../models/yolov4-tiny.onnx"  # Update this path if necessary
-    engine_file_path = "../models/yolov4-tiny.engine"
+    onnx_model_path = "./models/yolov4-tiny.onnx"  # Update this path if necessary
+    engine_file_path = "./models/yolov4-tiny.engine"
     
     if not os.path.exists(onnx_model_path):
         print(f"ONNX model not found at {onnx_model_path}. Please make sure the file exists.")

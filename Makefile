@@ -38,10 +38,13 @@ all: $(ENGINE_FILE) $(TARGET)
 
 # Ensure the Python environment is set up and the engine file is created
 $(ENGINE_FILE): $(REQUIREMENTS) $(PY_SCRIPTS)
-	@echo "Checking and installing Python packages..."
-	$(PYTHON) -m pip install -r $(REQUIREMENTS)  # Install requirements if not already installed
-	@echo "Running Python script to generate TensorRT engine..."
-	$(PYTHON) $(PY_SCRIPTS)
+	@if [ ! -f $(ENGINE_FILE) ]; then \
+		echo "TensorRT engine file not found, running conversion..."; \
+		$(PYTHON) -m pip install -r $(REQUIREMENTS); \
+		$(PYTHON) $(PY_SCRIPTS); \
+	else \
+		echo "TensorRT engine file found: $(ENGINE_FILE)"; \
+	fi
 
 # Create the directories if they don't exist
 $(OBJ_DIR):
