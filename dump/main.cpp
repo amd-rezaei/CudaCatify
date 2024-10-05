@@ -106,7 +106,6 @@ std::vector<float> preprocessImage(cv::Mat &image, int inputWidth, int inputHeig
     return inputTensorValues;
 }
 
-// Run inference using ONNX Runtime
 void runInference(const std::string &modelPath, const std::string &imagePath)
 {
     Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "YOLOv4-Tiny");
@@ -144,7 +143,7 @@ void runInference(const std::string &modelPath, const std::string &imagePath)
 
     // Run inference
     std::vector<const char *> outputNames = {outputName.get()};
-    std::vector<Ort::Value> outputTensors = session.Run(Ort::RunOptions{nullptr}, &inputName.get(), &inputTensor, 1, outputNames.data(), 1);
+    std::vector<Ort::Value> outputTensors = session.Run(Ort::RunOptions{nullptr}, inputName.get(), &inputTensor, 1, outputNames.data(), 1);
 
     // Get outputs
     float *outputBoxes = outputTensors[0].GetTensorMutableData<float>();
