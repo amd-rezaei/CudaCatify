@@ -116,10 +116,10 @@ void runInference(const std::string &modelPath, const std::string &imagePath)
     Ort::AllocatorWithDefaultOptions allocator;
 
     // Get input/output info
-    auto inputName = session.GetInputName(0, allocator);
+    auto inputName = session.GetInputNameAllocated(0, allocator);
     auto inputShape = session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
 
-    auto outputName = session.GetOutputName(0, allocator);
+    auto outputName = session.GetOutputNameAllocated(0, allocator);
     auto outputShape = session.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
 
     int inputWidth = inputShape[3];
@@ -137,13 +137,14 @@ void runInference(const std::string &modelPath, const std::string &imagePath)
     std::vector<float> inputTensorValues = preprocessImage(image, inputWidth, inputHeight);
 
     // Prepare input tensor
+    Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
-        allocator, inputTensorValues.data(), inputTensorValues.size(),
+        memoryInfo, inputTensorValues.data(), inputTensorValues.size(),
         inputShape.data(), inputShape.size());
 
     // Run inference
-    std::vector<const char *> outputNames = {outputName};
-    std::vector<Ort::Value> outputTensors = session.Run(Ort::RunOptions{nullptr}, &inputName, &inputTensor, 1, outputNames.data(), 1);
+    std::vector<const char *> outputNames = {outputName.get()};
+    std::vector<Ort::Value> outputTensors = session.Run(Ort::RunOptions{nullptr}, &inputName.get(), &inputTensor, 1, outputNames.data(), 1);
 
     // Get outputs
     float *outputBoxes = outputTensors[0].GetTensorMutableData<float>();
