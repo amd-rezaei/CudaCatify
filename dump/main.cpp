@@ -106,55 +106,6 @@ std::vector<float> preprocessImage(cv::Mat &image, int inputWidth, int inputHeig
     return inputTensorValues;
 }
 
-void runInference(const std::string &modelPath, const std::string &imagePath)
-{
-    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "YOLOv4-Tiny");
-    Ort::SessionOptions sessionOptions;
-    Ort::Session session(env, modelPath.c_str(), sessionOptions);
-
-    Ort::AllocatorWithDefaultOptions allocator;
-
-    // Get input/output info
-    auto inputName = session.GetInputNameAllocated(0, allocator);
-    auto inputShape = session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
-
-    auto outputName = session.GetOutputNameAllocated(0, allocator);
-    auto outputShape = session.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
-
-    int inputWidth = inputShape[3];
-    int inputHeight = inputShape[2];
-
-    // Read the input image
-    cv::Mat image = cv::imread(imagePath);
-    if (image.empty())
-    {
-        std::cerr << "Error loading image!" << std::endl;
-        return;
-    }
-
-    // Preprocess the image
-    std::vector<float> inputTensorValues = preprocessImage(image, inputWidth, inputHeight);
-
-    // Prepare input tensor
-    Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-    Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
-        memoryInfo, inputTensorValues.data(), inputTensorValues.size(),
-        inputShape.data(), inputShape.size());
-
-    // Run inference
-    std::vector<const char *> outputNames = {outputName.get()};
-    std::vector<Ort::Value> outputTensors = session.Run(Ort::RunOptions{nullptr}, inputName.get(), &inputTensor, 1, outputNames.data(), 1);
-
-    // Get outputs
-    float *outputBoxes = outputTensors[0].GetTensorMutableData<float>();
-    float *outputScores = outputTensors[1].GetTensorMutableData<float>();
-    int *outputClasses = outputTensors[2].GetTensorMutableData<int>();
-
-    // Post-process and save the image
-    postProcessAndSaveImage(image, std::vector<float>(outputBoxes, outputBoxes + outputShape[1] * 4),
-                            std::vector<float>(outputScores, outputScores + outputShape[1]),
-                            std::vector<int>(outputClasses, outputClasses + outputShape[1]), outputShape[1], 80);
-}
 
 int main(int argc, char *argv[])
 {
