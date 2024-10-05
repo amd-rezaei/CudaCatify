@@ -1,0 +1,170 @@
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <opencv2/opencv.hpp>
+#include <onnxruntime_cxx_api.h> // ONNX Runtime header
+
+// Helper function to perform non-maximum suppression (NMS)
+std::vector<int> nonMaxSuppression(const std::vector<cv::Rect> &boxes, const std::vector<float> &confidences, float threshold)
+{
+    std::vector<int> indices;
+    cv::dnn::NMSBoxes(boxes, confidences, 0.5, threshold, indices);
+    return indices;
+}
+
+// Post-process the inference results, draw bounding boxes, and save the image
+void postProcessAndSaveImage(cv::Mat &image, const std::vector<float> &outputBoxes, const std::vector<float> &outputScores, const std::vector<int> &outputClasses, int numBoxes, int numClasses)
+{
+    float confThreshold = 0.5f;
+    float nmsThreshold = 0.4f;
+
+    std::vector<cv::Rect> boxes;
+    std::vector<float> confidences;
+    std::vector<int> classIds;
+
+    int imgHeight = image.rows;
+    int imgWidth = image.cols;
+
+    // Iterate over the number of detections
+    for (int i = 0; i < numBoxes; ++i)
+    {
+        float x_center = outputBoxes[i * 4];
+        float y_center = outputBoxes[i * 4 + 1];
+        float width = outputBoxes[i * 4 + 2];
+        float height = outputBoxes[i * 4 + 3];
+
+        int x_min = static_cast<int>((x_center - width / 2) * imgWidth);
+        int y_min = static_cast<int>((y_center - height / 2) * imgHeight);
+        int box_width = static_cast<int>(width * imgWidth);
+        int box_height = static_cast<int>(height * imgHeight);
+
+        float confidence = outputScores[i];
+        int classId = outputClasses[i];
+
+        // Only consider boxes with high enough confidence
+        if (confidence > confThreshold)
+        {
+            boxes.emplace_back(x_min, y_min, box_width, box_height);
+            confidences.push_back(confidence);
+            classIds.push_back(classId);
+
+            // Print out the details of the detected objects
+            std::cout << "Detected object: Class " << classId
+                      << " with confidence: " << confidence
+                      << ", Bounding Box [x_min: " << x_min
+                      << ", y_min: " << y_min
+                      << ", width: " << box_width
+                      << ", height: " << box_height
+                      << "]" << std::endl;
+        }
+    }
+
+    // Perform Non-Maximum Suppression (NMS)
+    std::vector<int> nmsIndices = nonMaxSuppression(boxes, confidences, nmsThreshold);
+
+    // Draw the boxes on the image
+    for (int idx : nmsIndices)
+    {
+        cv::Rect box = boxes[idx];
+        int classId = classIds[idx];
+        float confidence = confidences[idx];
+
+        // Draw bounding box
+        cv::rectangle(image, box, cv::Scalar(0, 255, 0), 2);
+
+        // Put label with class ID and confidence
+        std::string label = "Class " + std::to_string(classId) + ": " + std::to_string(confidence);
+        int baseline = 0;
+        cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseline);
+        cv::rectangle(image, cv::Point(box.x, box.y - labelSize.height),
+                      cv::Point(box.x + labelSize.width, box.y + baseline), cv::Scalar(0, 255, 0), cv::FILLED);
+        cv::putText(image, label, cv::Point(box.x, box.y), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1);
+    }
+
+    // Save the result image
+    cv::imwrite("output_with_bboxes.jpg", image);
+    std::cout << "Saved output image with bounding boxes as 'output_with_bboxes.jpg'" << std::endl;
+}
+
+// Preprocess image for ONNX input (resize and normalize)
+std::vector<float> preprocessImage(cv::Mat &image, int inputWidth, int inputHeight)
+{
+    cv::Mat resizedImage;
+    cv::resize(image, resizedImage, cv::Size(inputWidth, inputHeight));
+    resizedImage.convertTo(resizedImage, CV_32F, 1 / 255.0);
+
+    // Convert HWC to CHW
+    std::vector<cv::Mat> channels(3);
+    cv::split(resizedImage, channels);
+
+    std::vector<float> inputTensorValues;
+    for (int c = 0; c < 3; ++c)
+    {
+        inputTensorValues.insert(inputTensorValues.end(), (float *)channels[c].datastart, (float *)channels[c].dataend);
+    }
+
+    return inputTensorValues;
+}
+
+// Run inference using ONNX Runtime
+void runInference(const std::string &modelPath, const std::string &imagePath)
+{
+    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "YOLOv4-Tiny");
+    Ort::SessionOptions sessionOptions;
+    Ort::Session session(env, modelPath.c_str(), sessionOptions);
+
+    Ort::AllocatorWithDefaultOptions allocator;
+
+    // Get input/output info
+    auto inputName = session.GetInputName(0, allocator);
+    auto inputShape = session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+
+    auto outputName = session.GetOutputName(0, allocator);
+    auto outputShape = session.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+
+    int inputWidth = inputShape[3];
+    int inputHeight = inputShape[2];
+
+    // Read the input image
+    cv::Mat image = cv::imread(imagePath);
+    if (image.empty())
+    {
+        std::cerr << "Error loading image!" << std::endl;
+        return;
+    }
+
+    // Preprocess the image
+    std::vector<float> inputTensorValues = preprocessImage(image, inputWidth, inputHeight);
+
+    // Prepare input tensor
+    Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
+        allocator, inputTensorValues.data(), inputTensorValues.size(),
+        inputShape.data(), inputShape.size());
+
+    // Run inference
+    std::vector<const char *> outputNames = {outputName};
+    std::vector<Ort::Value> outputTensors = session.Run(Ort::RunOptions{nullptr}, &inputName, &inputTensor, 1, outputNames.data(), 1);
+
+    // Get outputs
+    float *outputBoxes = outputTensors[0].GetTensorMutableData<float>();
+    float *outputScores = outputTensors[1].GetTensorMutableData<float>();
+    int *outputClasses = outputTensors[2].GetTensorMutableData<int>();
+
+    // Post-process and save the image
+    postProcessAndSaveImage(image, std::vector<float>(outputBoxes, outputBoxes + outputShape[1] * 4),
+                            std::vector<float>(outputScores, outputScores + outputShape[1]),
+                            std::vector<int>(outputClasses, outputClasses + outputShape[1]), outputShape[1], 80);
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc < 3)
+    {
+        std::cerr << "Usage: " << argv[0] << " <model.onnx> <image>" << std::endl;
+        return -1;
+    }
+
+    runInference(argv[1], argv[2]);
+
+    return 0;
+}

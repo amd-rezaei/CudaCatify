@@ -197,6 +197,14 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
     int outputIndex2 = 2; // For confidence scores
 
     nvinfer1::Dims input_dims = engine->getTensorShape("input_0");
+
+    std::cout << "Input dimensions: ";
+    for (int i = 0; i < input_dims.nbDims; ++i)
+    {
+        std::cout << input_dims.d[i] << " ";
+    }
+    std::cout << std::endl;
+
     nvinfer1::Dims output_dims1 = engine->getTensorShape("output_0"); // Bounding boxes
     nvinfer1::Dims output_dims2 = engine->getTensorShape("1030");     // Confidence scores
 
@@ -254,7 +262,13 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
     std::cout << "Input data is valid\n";
 
     // Copy input data to the device
-    cudaMemcpy(buffers[inputIndex], input_data, input_size_bytes, cudaMemcpyHostToDevice);
+    cudaError_t err = cudaMemcpy(buffers[inputIndex], input_data, input_size_bytes, cudaMemcpyHostToDevice);
+    if (err != cudaSuccess)
+    {
+        std::cerr << "cudaMemcpy failed: " << cudaGetErrorString(err) << std::endl;
+        return {};
+    }
+
     checkCudaError("After cudaMemcpy for input data");
     std::cout << "Input data copied to GPU\n";
 
@@ -282,9 +296,19 @@ std::vector<BoundingBox> run_inference(nvinfer1::ICudaEngine *engine, void *inpu
     std::vector<float> output_data_2(calculate_num_elements(output_dims2));
 
     // Copy output data from the device
-    cudaMemcpy(output_data_1.data(), buffers[outputIndex1], output_size_bytes1, cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(output_data_1.data(), buffers[outputIndex1], output_size_bytes1, cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess)
+    {
+        std::cerr << "cudaMemcpy failed: " << cudaGetErrorString(err) << std::endl;
+        return {};
+    }
     checkCudaError("After cudaMemcpy for output bounding boxes");
-    cudaMemcpy(output_data_2.data(), buffers[outputIndex2], output_size_bytes2, cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(output_data_2.data(), buffers[outputIndex2], output_size_bytes2, cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess)
+    {
+        std::cerr << "cudaMemcpy failed: " << cudaGetErrorString(err) << std::endl;
+        return {};
+    }
     checkCudaError("After cudaMemcpy for output confidence scores");
 
     // Validate output data
