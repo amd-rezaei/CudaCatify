@@ -5,34 +5,30 @@
 #include <onnxruntime_cxx_api.h> // ONNX Runtime header
 
 // Helper function to perform non-maximum suppression (NMS)
-std::vector<int> nonMaxSuppression(const std::vector<cv::Rect> &boxes, const std::vector<float> &confidences, float threshold)
+std::vector<int> nonMaxSuppression(const std::vector<cv::Rect> &boxes, const std::vector<float> &confidences, float confThreshold, float nmsThreshold)
 {
     std::vector<int> indices;
-    cv::dnn::NMSBoxes(boxes, confidences, 0.5, threshold, indices);
+    cv::dnn::NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, indices);
     return indices;
 }
 
-// Post-process the inference results, draw bounding boxes, and save the image
-void postProcessAndSaveImage(cv::Mat &image, const std::vector<float> &outputBoxes, const std::vector<float> &outputScores, const std::vector<int> &outputClasses, int numBoxes, int numClasses, int inputWidth, int inputHeight)
+// Helper function to apply sigmoid
+float sigmoid(float x)
 {
-    float confThreshold = 0.6f; // Increase the confidence threshold to filter low confidence detections
-    float nmsThreshold = 0.5f;  // Adjust NMS threshold to reduce overlapping boxes
+    return 1.0 / (1.0 + std::exp(-x));
+}
+
+void postProcessAndSaveImage(cv::Mat &image, const std::vector<float> &outputBoxes, const std::vector<float> &outputScores, const std::vector<int> &outputClasses, int numBoxes, int numClasses, int imgWidth, int imgHeight)
+{
+    float confThreshold = 0.8f; // Confidence threshold
+    float nmsThreshold = 0.1f;  // Further reduce NMS threshold for more aggressive suppression
 
     std::vector<cv::Rect> boxes;
     std::vector<float> confidences;
     std::vector<int> classIds;
 
-    int imgHeight = image.rows;
-    int imgWidth = image.cols;
-
-    // Calculate scaling factors to convert back to original image size
-    float xScale = static_cast<float>(imgWidth) / inputWidth;
-    float yScale = static_cast<float>(imgHeight) / inputHeight;
-
-    // Calculate padding (if any) that was added during preprocessing
-    float scale = std::min(float(inputWidth) / imgWidth, float(inputHeight) / imgHeight);
-    int paddingX = (inputWidth - imgWidth * scale) / 2;
-    int paddingY = (inputHeight - imgHeight * scale) / 2;
+    int imageHeight = image.rows;
+    int imageWidth = image.cols;
 
     // Define the class labels
     std::vector<std::string> labels = {
@@ -55,13 +51,13 @@ void postProcessAndSaveImage(cv::Mat &image, const std::vector<float> &outputBox
         float width = outputBoxes[i * 4 + 2];
         float height = outputBoxes[i * 4 + 3];
 
-        // Undo the scaling and padding
-        int x_min = static_cast<int>((x_center - width / 2) * inputWidth - paddingX) * xScale;
-        int y_min = static_cast<int>((y_center - height / 2) * inputHeight - paddingY) * yScale;
-        int box_width = static_cast<int>(width * inputWidth * xScale);
-        int box_height = static_cast<int>(height * inputHeight * yScale);
+        // Ensure box is within valid range
+        int x_min = static_cast<int>(std::max((x_center - width / 2) * imageWidth, 0.0f));
+        int y_min = static_cast<int>(std::max((y_center - height / 2) * imageHeight, 0.0f));
+        int box_width = static_cast<int>(width * imageWidth);
+        int box_height = static_cast<int>(height * imageHeight);
 
-        float confidence = outputScores[i]; // Use the actual confidence score from the output
+        float confidence = outputScores[i]; // Get confidence score
         int classId = outputClasses[i];     // Get the predicted class ID
 
         // Only consider boxes with confidence greater than the threshold
@@ -82,8 +78,13 @@ void postProcessAndSaveImage(cv::Mat &image, const std::vector<float> &outputBox
         }
     }
 
-    // Perform Non-Maximum Suppression (NMS)
-    std::vector<int> nmsIndices = nonMaxSuppression(boxes, confidences, nmsThreshold);
+    // Perform Non-Maximum Suppression (NMS) with lower threshold
+    std::vector<int> nmsIndices;
+    cv::dnn::NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, nmsIndices);
+
+    // Debug: Print the number of boxes before and after NMS
+    std::cout << "Number of boxes before NMS: " << boxes.size() << std::endl;
+    std::cout << "Number of boxes after NMS: " << nmsIndices.size() << std::endl;
 
     // Draw the boxes on the image
     for (int idx : nmsIndices)
@@ -121,9 +122,9 @@ std::vector<float> preprocessImage(cv::Mat &image, int inputWidth, int inputHeig
     int newWidth = static_cast<int>(originalWidth * scale);
     int newHeight = static_cast<int>(originalHeight * scale);
 
-    // Resize the image and pad it to keep the aspect ratio
+    // Resize the image and pad it to keep the aspect ratio (use 128 as padding value)
     cv::resize(image, resizedImage, cv::Size(newWidth, newHeight));
-    cv::Mat paddedImage = cv::Mat::zeros(inputHeight, inputWidth, CV_32FC3);
+    cv::Mat paddedImage(inputHeight, inputWidth, CV_32FC3, cv::Scalar(128, 128, 128));
 
     // Center the resized image
     resizedImage.copyTo(paddedImage(cv::Rect((inputWidth - newWidth) / 2, (inputHeight - newHeight) / 2, newWidth, newHeight)));
@@ -141,10 +142,9 @@ std::vector<float> preprocessImage(cv::Mat &image, int inputWidth, int inputHeig
         inputTensorValues.insert(inputTensorValues.end(), (float *)channels[c].datastart, (float *)channels[c].dataend);
     }
 
-    return inputTensorValues;
+    return inputTensorValues; // Tensor values in CHW format
 }
 
-// Run inference using ONNX Runtime
 void runInference(const std::string &modelPath, const std::string &imagePath)
 {
     Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "YOLOv4-Tiny");
@@ -163,14 +163,11 @@ void runInference(const std::string &modelPath, const std::string &imagePath)
         std::cout << s << " ";
     std::cout << std::endl;
 
-    auto outputNameAllocated = session.GetOutputNameAllocated(0, allocator);
-    const char *outputName = outputNameAllocated.get(); // Extract raw pointer to output name
-
-    auto outputShape = session.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
-    std::cout << "Output shape: ";
-    for (auto s : outputShape)
-        std::cout << s << " ";
-    std::cout << std::endl;
+    // Get both output names
+    auto outputNameAllocated1 = session.GetOutputNameAllocated(0, allocator);
+    auto outputNameAllocated2 = session.GetOutputNameAllocated(1, allocator);
+    const char *outputName1 = outputNameAllocated1.get(); // Bounding boxes
+    const char *outputName2 = outputNameAllocated2.get(); // Class scores
 
     int inputWidth = inputShape[3];
     int inputHeight = inputShape[2];
@@ -192,34 +189,50 @@ void runInference(const std::string &modelPath, const std::string &imagePath)
         memoryInfo, inputTensorValues.data(), inputTensorValues.size(),
         inputShape.data(), inputShape.size());
 
-    // Run inference
-    std::vector<const char *> inputNames = {inputName};   // Wrap inputName in vector
-    std::vector<const char *> outputNames = {outputName}; // Wrap outputName in vector
+    // Run inference, expecting two outputs: one for boxes and one for class scores
+    std::vector<const char *> inputNames = {inputName};
+    std::vector<const char *> outputNames = {outputName1, outputName2}; // Bounding boxes and class scores
     std::vector<Ort::Value> outputTensors = session.Run(
-        Ort::RunOptions{nullptr}, inputNames.data(), &inputTensor, 1, outputNames.data(), 1);
+        Ort::RunOptions{nullptr}, inputNames.data(), &inputTensor, 1, outputNames.data(), 2);
 
-    if (outputTensors.size() != 1)
+    if (outputTensors.size() != 2)
     {
-        std::cerr << "Expected 1 output tensor, got " << outputTensors.size() << std::endl;
+        std::cerr << "Expected 2 output tensors (boxes and scores), got " << outputTensors.size() << std::endl;
         return;
     }
 
-    // Get outputs (assuming output tensor contains all needed data, including boxes and scores)
-    float *outputData = outputTensors[0].GetTensorMutableData<float>();
+    // Get outputs (bounding boxes and class scores)
+    float *outputBoxes = outputTensors[0].GetTensorMutableData<float>();
+    float *outputScores = outputTensors[1].GetTensorMutableData<float>();
 
-    // Debug print to verify data structure
-    std::cout << "First few output values: ";
-    for (int i = 0; i < 10; i++)
+    int numBoxes = outputTensors[0].GetTensorTypeAndShapeInfo().GetShape()[1]; // Number of detections
+
+    std::vector<int> outputClasses(numBoxes);
+    std::vector<float> confidences(numBoxes);
+
+    int numClasses = 80; // Assuming COCO dataset
+
+    // Get the class with the highest score
+    for (int i = 0; i < numBoxes; i++)
     {
-        std::cout << outputData[i] << " ";
+        float maxScore = 0.0f;
+        int bestClass = -1;
+        for (int j = 0; j < numClasses; j++)
+        {
+            float score = outputScores[i * numClasses + j];
+            if (score > maxScore)
+            {
+                maxScore = score;
+                bestClass = j;
+            }
+        }
+        confidences[i] = maxScore;
+        outputClasses[i] = bestClass;
     }
-    std::cout << std::endl;
 
     // Post-process and save the image
-    postProcessAndSaveImage(image, std::vector<float>(outputData, outputData + outputShape[1] * 4),
-                            std::vector<float>(outputData, outputData + outputShape[1]), // Dummy for now
-                            std::vector<int>(outputData, outputData + outputShape[1]),   // Dummy for now
-                            outputShape[1], 80, inputWidth, inputHeight);
+    postProcessAndSaveImage(image, std::vector<float>(outputBoxes, outputBoxes + numBoxes * 4),
+                            confidences, outputClasses, numBoxes, numClasses, inputWidth, inputHeight);
 }
 
 int main(int argc, char *argv[])
