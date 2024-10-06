@@ -1,7 +1,0 @@
-Input shape: 1 3 416 416 
-Detected object: person with confidence: 0.996764, Bounding Box [x_min: 5, y_min: 0, width: 259, height: 530]
-Detected object: person with confidence: 0.993044, Bounding Box [x_min: 12, y_min: 0, width: 254, height: 587]
-Detected object: person with confidence: 0.937412, Bounding Box [x_min: 12, y_min: 0, width: 255, height: 628]
-Number of boxes before NMS: 3
-Number of boxes after NMS: 1
-Saved output image with bounding boxes as 'output_with_bboxes.jpg'

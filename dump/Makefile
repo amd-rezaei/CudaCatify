@@ -1,6 +1,7 @@
 CXX = g++
 NVCC = nvcc
-CXXFLAGS = -I/home/amd/libs/onnxruntime/include -I/usr/local/cuda/include `pkg-config --cflags opencv4`
+CXXFLAGS = -I/home/amd/libs/onnxruntime/include -I/usr/local/cuda/include `pkg-config --cflags opencv4` -I../include
+
 LDFLAGS = -L/home/amd/libs/onnxruntime/lib -lonnxruntime -lcudart `pkg-config --libs opencv4`
 
 # Targets
