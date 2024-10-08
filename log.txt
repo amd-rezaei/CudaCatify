@@ -1,30 +1,28 @@
 Image preprocessed to CHW format.
 Running YOLOv5 inference...
 YOLOv5 inference completed.
-Output size: 403200
-Confidence-class multiplication data written to after_conf_cls_multiplication_cpp.csv.
-Bounding Box 46: 558, 267, 43, 55 Confidence: 0.898308 Class: 2
-Bounding Box 232: 297, 140, 52, 66 Confidence: 0.897554 Class: 8
-Bounding Box 213: 300, 3, 55, 66 Confidence: 0.897194 Class: 8
-Bounding Box 172: 39, 265, 49, 64 Confidence: 0.888947 Class: 9
-Bounding Box 272: 681, 379, 49, 69 Confidence: 0.887177 Class: 2
-Bounding Box 211: 170, 6, 46, 60 Confidence: 0.886519 Class: 8
-Bounding Box 209: 44, 9, 48, 62 Confidence: 0.886467 Class: 9
-Bounding Box 243: 170, 259, 43, 60 Confidence: 0.883751 Class: 7
-Bounding Box 266: 295, 391, 45, 63 Confidence: 0.883677 Class: 9
-Bounding Box 233: 430, 135, 49, 64 Confidence: 0.882515 Class: 2
-Bounding Box 229: 166, 134, 51, 67 Confidence: 0.881994 Class: 7
-Bounding Box 263: 37, 386, 50, 64 Confidence: 0.881985 Class: 9
-Bounding Box 223: 676, 15, 46, 61 Confidence: 0.88143 Class: 2
-Bounding Box 264: 168, 396, 46, 60 Confidence: 0.881364 Class: 9
-Bounding Box 236: 555, 147, 42, 54 Confidence: 0.881148 Class: 2
-Bounding Box 245: 294, 258, 45, 61 Confidence: 0.879765 Class: 7
-Bounding Box 247: 421, 258, 44, 58 Confidence: 0.879581 Class: 8
-Bounding Box 216: 426, 4, 48, 67 Confidence: 0.877721 Class: 8
-Bounding Box 269: 423, 387, 46, 64 Confidence: 0.877627 Class: 9
-Bounding Box 154: 44, 132, 46, 60 Confidence: 0.877598 Class: 7
-Bounding Box 251: 687, 262, 46, 58 Confidence: 0.875715 Class: 2
-Bounding Box 218: 552, 10, 51, 70 Confidence: 0.86443 Class: 2
-Bounding Box 200: 549, 392, 49, 70 Confidence: 0.864088 Class: 9
-Bounding Box 237: 682, 133, 51, 63 Confidence: 0.849107 Class: 2
-Output image with scaled bounding boxes saved as 'output_with_bboxes_scaled.jpg'.
+Scaled Bounding Box: [x=558, y=267, width=43, height=55]
+Scaled Bounding Box: [x=297, y=140, width=52, height=66]
+Scaled Bounding Box: [x=300, y=3, width=55, height=66]
+Scaled Bounding Box: [x=39, y=265, width=49, height=64]
+Scaled Bounding Box: [x=681, y=379, width=49, height=69]
+Scaled Bounding Box: [x=170, y=6, width=46, height=60]
+Scaled Bounding Box: [x=44, y=9, width=48, height=62]
+Scaled Bounding Box: [x=170, y=259, width=43, height=60]
+Scaled Bounding Box: [x=295, y=391, width=45, height=63]
+Scaled Bounding Box: [x=430, y=135, width=49, height=64]
+Scaled Bounding Box: [x=166, y=134, width=51, height=67]
+Scaled Bounding Box: [x=37, y=386, width=50, height=64]
+Scaled Bounding Box: [x=676, y=15, width=46, height=61]
+Scaled Bounding Box: [x=168, y=396, width=46, height=60]
+Scaled Bounding Box: [x=555, y=147, width=42, height=54]
+Scaled Bounding Box: [x=294, y=258, width=45, height=61]
+Scaled Bounding Box: [x=421, y=258, width=44, height=58]
+Scaled Bounding Box: [x=426, y=4, width=48, height=67]
+Scaled Bounding Box: [x=423, y=387, width=46, height=64]
+Scaled Bounding Box: [x=44, y=132, width=46, height=60]
+Scaled Bounding Box: [x=687, y=262, width=46, height=58]
+Scaled Bounding Box: [x=552, y=10, width=51, height=70]
+Scaled Bounding Box: [x=549, y=392, width=49, height=70]
+Scaled Bounding Box: [x=682, y=133, width=51, height=63]
+Output image with emojis saved as 'output_with_emojis.jpg'.
