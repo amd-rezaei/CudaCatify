@@ -16,7 +16,6 @@ build/
 *.log
 *.tmp
 
-submodules/
 workspace/
 bin/
 dump/
