@@ -1,130 +1,224 @@
-import cv2
-import numpy as np
 import onnxruntime as ort
+import random
+import numpy as np
+import cv2
+import time
+import csv
 
-# Single class label ("Face")
-labels = ["Face"]
+class ort_v5:
+    def __init__(self, img_path, onnx_model, conf_thres, iou_thres, img_size, classes):
+        self.img_path = img_path
+        self.onnx_model = onnx_model
+        self.conf_thres = conf_thres
+        self.iou_thres = iou_thres
+        self.img_size = img_size
+        self.names = classes
+        self.ort_session = None
 
-# Helper function to apply sigmoid
-def sigmoid(x):
-    return 1.0 / (1.0 + np.exp(-x))
+    def __call__(self):
+        # Check if CUDAExecutionProvider is available, else fallback to CPU
+        providers = ['CUDAExecutionProvider'] if 'CUDAExecutionProvider' in ort.get_available_providers() else ['CPUExecutionProvider']
 
-# Helper function to preprocess the image and convert to Float16
-def preprocess_image(image, input_width, input_height):
-    original_height, original_width = image.shape[:2]
+        self.ort_session = ort.InferenceSession(self.onnx_model, providers=providers)
 
-    # Resize the image while maintaining the aspect ratio
-    scale = min(input_width / original_width, input_height / original_height)
-    new_width = int(original_width * scale)
-    new_height = int(original_height * scale)
+        # Load and process the image
+        image_or = cv2.imread(self.img_path)
+        output_image = self.detect_img(image_or)
+        cv2.imwrite('./output_with_bboxes.jpg', output_image)  # Save the output image with bounding boxes
+        print("Output saved as 'output_with_bboxes.jpg'")
 
-    resized_image = cv2.resize(image, (new_width, new_height))
-    
-    # Create a padded image
-    padded_image = np.full((input_height, input_width, 3), 128, dtype=np.float32)
+    def detect_img(self, image_or):
+        # Image preprocessing for the YOLOv5 model
+        image, ratio, dwdh = self.letterbox(image_or, auto=False)
+        image = image.transpose((2, 0, 1))  # HWC to CHW
+        image = np.expand_dims(image, 0)
+        image = np.ascontiguousarray(image)
+        im = image.astype(np.float32) / 255.0  # Normalize to [0, 1]
 
-    # Paste the resized image into the padded image
-    x_offset = (input_width - new_width) // 2
-    y_offset = (input_height - new_height) // 2
-    padded_image[y_offset:y_offset+new_height, x_offset:x_offset+new_width, :] = resized_image
+        # YOLOv5 expects a [1, 3, 640, 640] input (assuming the model was trained on 640x640 images)
+        session = self.ort_session
+        outname = [i.name for i in session.get_outputs()]
+        inname = [i.name for i in session.get_inputs()]
+        inp = {inname[0]: im}
 
-    # Normalize and convert to CHW format
-    padded_image /= 255.0
-    padded_image = np.transpose(padded_image, (2, 0, 1))  # HWC to CHW
+        # ONNXRuntime inference
+        t1 = time.time()
+        outputs = session.run(outname, inp)
+        t2 = time.time()
+        print(f'ONNXRuntime Inference Time: {t2 - t1}s')
 
-    # Convert to Float16
-    padded_image = padded_image.astype(np.float16)
-    
-    return np.expand_dims(padded_image, axis=0)  # Add batch dimension
+        # Log raw 25,200 x 16 values to a CSV file
+        self.save_raw_outputs_to_csv(outputs[0])
 
-# Function to clamp values before applying exp() to prevent overflow
-def clamp(value, min_value, max_value):
-    return np.maximum(min_value, np.minimum(value, max_value))
+        # Process the output tensor
+        output = np.array(outputs[0])
 
-# Helper function to post-process the model's output and apply NMS
-def post_process(output, conf_threshold, nms_threshold, img_width, img_height):
-    boxes = []
-    confidences = []
-    class_ids = []
+        # Perform NMS (non-max suppression)
+        out = self.non_max_suppression_face(output, self.conf_thres, self.iou_thres)[0]
 
-    num_boxes = output.shape[0]
+        # Log NMS results to a CSV file
+        self.save_nms_outputs_to_csv(out)
 
-    for i in range(num_boxes):
-        # Get the bounding box and confidence values
-        x_center, y_center, width, height, confidence, class_score = output[i][:6]
+        # Draw results on the image
+        result_img = self.result(image_or, ratio, dwdh, out)
+        return result_img
 
-        confidence = sigmoid(confidence)  # Objectness score
-        if confidence >= conf_threshold:
-            # Convert the bounding box from center x, center y, width, height to x_min, y_min, width, height
-            x_center = sigmoid(x_center) * img_width
-            y_center = sigmoid(y_center) * img_height
+    def save_raw_outputs_to_csv(self, raw_outputs):
+        # Reshape raw_outputs to 25,200 x 16 format
+        raw_outputs = raw_outputs.reshape(-1, 16)
 
-            # Clamp values before applying exp() to avoid overflow
-            width = clamp(np.exp(width) * img_width, 0, img_width)
-            height = clamp(np.exp(height) * img_height, 0, img_height)
+        # Write to CSV
+        with open('log_py.csv', mode='w', newline='') as file:
+            writer = csv.writer(file)
+            # Write header
+            header = ['x_center', 'y_center', 'width', 'height', 'confidence'] + [f'class_prob_{i}' for i in range(10)] + ['extra']
+            writer.writerow(header)
 
-            # Convert to x_min, y_min, width, height
-            x_min = int(x_center - width / 2)
-            y_min = int(y_center - height / 2)
+            # Write each row of raw detection values
+            for row in raw_outputs:
+                writer.writerow(row)
 
-            boxes.append([x_min, y_min, int(width), int(height)])
-            confidences.append(float(confidence))
-            class_ids.append(0)  # Assuming single class "Face"
+        print(f"Raw output data has been written to 'log_py.csv'.")
 
-    # Apply Non-Maximum Suppression (NMS)
-    indices = cv2.dnn.NMSBoxes(boxes, confidences, conf_threshold, nms_threshold)
-    
-    # Return detected bounding boxes and confidence scores
-    return [(boxes[i[0]], confidences[i[0]], class_ids[i[0]]) for i in indices]
+    def save_nms_outputs_to_csv(self, nms_outputs):
+        # Write NMS results to CSV
+        with open('nms_results.csv', mode='w', newline='') as file:
+            writer = csv.writer(file)
+            # Write header
+            header = ['x_min', 'y_min', 'x_max', 'y_max', 'confidence', 'class']
+            writer.writerow(header)
 
-# Draw bounding boxes and save the image
-def draw_boxes(image, detections):
-    for (box, confidence, class_id) in detections:
-        x_min, y_min, width, height = box
-        label = f"{labels[class_id]}: {confidence:.2f}"
+            # Write each row of NMS filtered bounding boxes and their associated information
+            for row in nms_outputs:
+                x_min, y_min, x_max, y_max, score, class_id = row[:6]
+                writer.writerow([x_min, y_min, x_max, y_max, score, int(class_id)])
 
-        # Draw bounding box
-        cv2.rectangle(image, (x_min, y_min), (x_min + width, y_min + height), (0, 255, 0), 2)
+        print(f"NMS results have been written to 'nms_results.csv'.")
 
-        # Draw label
-        cv2.putText(image, label, (x_min, y_min - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+    # Display results
+    def result(self, img, ratio, dwdh, out):
+        # Load class names from the provided class file
+        names = self.class_name()
+        colors = {name: [random.randint(0, 255) for _ in range(3)] for i, name in enumerate(names)}
 
-    # Save output image
-    cv2.imwrite("output_with_bboxes_python.jpg", image)
-    print("Saved output image with bounding boxes as 'output_with_bboxes_python.jpg'")
+        for i, (x0, y0, x1, y1, score) in enumerate(out[:, 0:5]):
+            box = np.array([x0, y0, x1, y1])
+            box -= np.array(dwdh * 2)
+            box /= ratio
+            box = box.round().astype(np.int32).tolist()
 
-# Run inference
-def run_inference(model_path, image_path):
-    # Load the ONNX model
-    session = ort.InferenceSession(model_path)
+            score = round(float(score), 3)
+            name = names[0]  # Assign a class name, modify as needed
+            color = colors[name]
+            name += f' {score}'
 
-    # Get input and output names
-    input_name = session.get_inputs()[0].name
-    output_name = session.get_outputs()[0].name
+            # Draw the bounding box and label on the image
+            cv2.rectangle(img, (box[0], box[1]), (box[2], box[3]), color, 2)
+            cv2.putText(img, name, (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2)
 
-    # Load and preprocess the image
-    image = cv2.imread(image_path)
-    if image is None:
-        print("Error: Could not load image.")
-        return
+        return img
 
-    input_shape = session.get_inputs()[0].shape
-    preprocessed_image = preprocess_image(image, input_shape[3], input_shape[2])
+    def non_max_suppression_face(self, prediction, conf_thres=0.25, iou_thres=0.45, classes=None, agnostic=False, labels=()):
+        nc = prediction.shape[2] - 15  # number of classes
+        xc = prediction[..., 4] > conf_thres  # candidates
 
-    # Run inference
-    output = session.run([output_name], {input_name: preprocessed_image})[0]
+        min_wh, max_wh = 2, 4096  # (pixels) minimum and maximum box width and height
+        time_limit = 10.0  # seconds to quit after
+        redundant = True
+        multi_label = nc > 1  # multiple labels per box
+        merge = False  # use merge-NMS
 
-    # Reshape the output to have 6 values per detection (x_center, y_center, width, height, confidence, class_score)
-    output = np.reshape(output, (-1, 6))  # 6 because there are 6 elements (float16)
+        t = time.time()
+        output = [np.zeros((0, 16))] * prediction.shape[0]
+        
+        # Open a CSV file to write the values after the operation
+        with open('after_conf_cls_multiplication.csv', mode='w', newline='') as file:
+            writer = csv.writer(file)
+            header = ['x_center', 'y_center', 'width', 'height', 'confidence'] + [f'class_prob_{i}' for i in range(10)]
+            writer.writerow(header)
 
-    # Post-process output to filter out bounding boxes and apply NMS
-    conf_threshold = 0.5
-    nms_threshold = 0.4
-    detections = post_process(output, conf_threshold, nms_threshold, img_width=image.shape[1], img_height=image.shape[0])
+            for xi, x in enumerate(prediction):
+                x = x[xc[xi]]  # filter out by confidence threshold
+                
+                if not x.shape[0]:
+                    continue
 
-    # Draw and save the output image with bounding boxes
-    draw_boxes(image, detections)
+                # Multiply class confidence with object confidence
+                x[:, 15:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
 
-# Run the script
-if __name__ == "__main__":
-    run_inference('face_detection_yolov5s.onnx', 'faces.jpg')
+                # Write values to the CSV after this operation
+                for row in x:
+                    row_to_write = list(row[:16])  # Take the 16 values
+                    writer.writerow(row_to_write)
+
+                # Perform the rest of the processing as usual
+                box = self.xywh2xyxy(x[:, :4])
+
+                if multi_label:
+                    i, j = (x[:, 15:] > conf_thres).nonzero(as_tuple=False).T
+                    x = np.concatenate((box[i], x[i, j + 15, None], x[i, 5:15], j[:, None].astype(np.float32)), 1)
+                else:
+                    conf = np.max(x[:, 15:], axis=1, keepdims=True)
+                    j = np.argmax(x[:, 15:], axis=1)
+                    x = np.concatenate((box, conf, x[:, 5:15], j[:, None].astype(np.float32)), 1)
+                    x = x[conf.flatten() > conf_thres]
+
+                output[xi] = x
+                if (time.time() - t) > time_limit:
+                    break
+
+        return output
+    def xywh2xyxy(self, x):
+        y = np.zeros_like(x) if isinstance(x, np.ndarray) else np.zeros_like(x)
+        y[:, 0] = x[:, 0] - x[:, 2] / 2
+        y[:, 1] = x[:, 1] - x[:, 3] / 2
+        y[:, 2] = x[:, 0] + x[:, 2] / 2
+        y[:, 3] = x[:, 1] + x[:, 3] / 2
+        return y
+
+    def class_name(self):
+        classes = []
+        with open(self.names, 'r') as file:
+            while True:
+                name = file.readline().strip('\n')
+                if name == '':
+                    break
+                classes.append(name)
+        return classes
+
+    def letterbox(self, im, color=(114, 114, 114), auto=True, scaleup=True, stride=32):
+        shape = im.shape[:2]  # current shape [height, width]
+        new_shape = self.img_size
+        if isinstance(new_shape, int):
+            new_shape = (new_shape, new_shape)
+
+        r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+        if not scaleup:
+            r = min(r, 1.0)
+
+        new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
+        dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]
+        if auto:
+            dw, dh = np.mod(dw, stride), np.mod(dh, stride)
+
+        dw /= 2
+        dh /= 2
+
+        if shape[::-1] != new_unpad:
+            im = cv2.resize(im, new_unpad, interpolation=cv2.INTER_LINEAR)
+        top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+        left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+        im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
+        return im, r, (dw, dh)
+
+
+# Example usage
+image = './sdfaces.jpg'  # Path to input image
+weights = './yolov5m-face.onnx'  # YOLOv5 ONNX model
+conf = 0.7
+iou_thres = 0.5
+img_size = 640
+classes_txt = './classes.txt'  # Path to the class names file
+
+ORT = ort_v5(image, weights, conf, iou_thres, (img_size, img_size), classes=classes_txt)
+ORT()  # Run inference
