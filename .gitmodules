@@ -1,3 +1,3 @@
-[submodule "submodules/submodules/FaceID-YOLOV5.ArcFace"]
-	path = submodules/submodules/FaceID-YOLOV5.ArcFace
+[submodule "submodules/FaceID-YOLOV5.ArcFace"]
+	path = submodules/FaceID-YOLOV5.ArcFace
 	url = https://github.com/amd-rezaei/FaceID--YOLOV5.ArcFace.git
