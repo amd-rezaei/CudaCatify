@@ -1,7 +1,0 @@
-Image preprocessed to CHW format.
-Running YOLOv5 inference...
-YOLOv5 inference completed.
-Output size: 403200
-Confidence-class multiplication data written to after_conf_cls_multiplication_cpp.csv.
-Bounding Box 7: 171, 35, 46, 71 Confidence: 0.897864 Class: 8
-Output image with scaled bounding boxes saved as 'output_with_bboxes_scaled.jpg'.
