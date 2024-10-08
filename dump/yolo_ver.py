@@ -111,4 +111,4 @@ def run_inference(image_path, output_image_path):
     print(f"Saved output image with bounding boxes as '{output_image_path}'")
 
 # Run inference on an example image
-run_inference("outps.jpg", "output_with_bboxes.jpg")
+run_inference("faces.jpg", "output_with_bboxes.jpg")

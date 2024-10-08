@@ -3,114 +3,149 @@
 #include <vector>
 #include <opencv2/opencv.hpp>
 #include <onnxruntime_cxx_api.h> // ONNX Runtime header
-
-// Helper function to perform non-maximum suppression (NMS)
-std::vector<int> nonMaxSuppression(const std::vector<cv::Rect> &boxes, const std::vector<float> &confidences, float confThreshold, float nmsThreshold)
-{
-    std::vector<int> indices;
-    cv::dnn::NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, indices);
-    return indices;
-}
+#include <cmath>
+#include <algorithm>
+#include <numeric> // Add this for std::iota
+#include <fstream>
 
 // Helper function to apply sigmoid
 float sigmoid(float x)
 {
-    return 1.0 / (1.0 + std::exp(-x));
+    return 1.0f / (1.0f + std::exp(-x));
 }
 
-void postProcessAndSaveImage(cv::Mat &image, const std::vector<float> &outputBoxes, const std::vector<float> &outputScores, const std::vector<int> &outputClasses, int numBoxes, int numClasses, int imgWidth, int imgHeight)
+// Function to clamp values
+float clamp(float value, float minValue, float maxValue)
 {
-    float confThreshold = 0.8f; // Confidence threshold
-    float nmsThreshold = 0.1f;  // Further reduce NMS threshold for more aggressive suppression
+    return std::max(minValue, std::min(value, maxValue));
+}
 
-    std::vector<cv::Rect> boxes;
-    std::vector<float> confidences;
-    std::vector<int> classIds;
+// Convert [x, y, w, h] to [x_min, y_min, x_max, y_max]
+cv::Rect xywh2xyxy(float x_center, float y_center, float width, float height)
+{
+    int x_min = static_cast<int>(x_center - (width / 2));
+    int y_min = static_cast<int>(y_center - (height / 2));
+    int x_max = static_cast<int>(x_center + (width / 2));
+    int y_max = static_cast<int>(y_center + (height / 2));
+    return cv::Rect(x_min, y_min, x_max - x_min, y_max - y_min);
+}
 
-    int imageHeight = image.rows;
-    int imageWidth = image.cols;
+// Perform Non-Maximum Suppression (NMS)
+std::vector<int> performNMS(std::vector<cv::Rect> &boxes, std::vector<float> &confidences, std::vector<int> &class_ids, float iou_thres)
+{
+    std::vector<int> indices;
+    std::vector<int> idxs(boxes.size());
+    std::iota(idxs.begin(), idxs.end(), 0); // Fill indices with 0, 1, ..., n-1
 
-    // Define the class labels
-    std::vector<std::string> labels = {
-        "person", "bicycle", "car", "motorbike", "aeroplane", "bus", "train", "truck", "boat", "traffic light",
-        "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-        "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-        "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
-        "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-        "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "sofa", "pottedplant",
-        "bed", "diningtable", "toilet", "TVmonitor", "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave",
-        "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier",
-        "toothbrush"};
+    // Sort by confidence scores
+    std::sort(idxs.begin(), idxs.end(), [&confidences](int i1, int i2)
+              { return confidences[i1] > confidences[i2]; });
 
-    // Iterate over the number of detections
+    while (!idxs.empty())
+    {
+        int idx = idxs[0];
+        indices.push_back(idx);
+        std::vector<int> newIdxs;
+
+        for (size_t i = 1; i < idxs.size(); ++i)
+        {
+            int currentIdx = idxs[i];
+
+            // Calculate the IoU (Intersection over Union)
+            float interArea = (boxes[idx] & boxes[currentIdx]).area();
+            float unionArea = boxes[idx].area() + boxes[currentIdx].area() - interArea;
+            float iou = interArea / unionArea;
+
+            // Keep boxes that don't overlap too much (IoU < threshold)
+            if (iou <= iou_thres)
+            {
+                newIdxs.push_back(currentIdx);
+            }
+        }
+
+        idxs = std::move(newIdxs);
+    }
+
+    return indices;
+}
+
+// Non-Maximum Suppression (NMS) for YOLOv5 detection output
+std::vector<int> non_max_suppression_face(const std::vector<float> &output, std::vector<cv::Rect> &boxes, std::vector<float> &confidences, std::vector<int> &class_ids, float conf_thres, float iou_thres, int num_classes)
+{
+    int numBoxes = output.size() / 16; // Assuming each box has 16 values (x, y, w, h, obj_conf, class_probs, etc.)
+
+    // Open CSV file to log results after multiplying class confidence with object confidence
+    std::ofstream csvFile("after_conf_cls_multiplication_cpp.csv");
+    if (!csvFile.is_open())
+    {
+        std::cerr << "Error: Could not open after_conf_cls_multiplication_cpp.csv for writing." << std::endl;
+        return {};
+    }
+
+    // Write CSV header
+    csvFile << "x_center,y_center,width,height,confidence";
+    for (int j = 0; j < 10; ++j) // Assuming 10 classes
+    {
+        csvFile << ",Class_" << j << "_Probability";
+    }
+    csvFile << std::endl;
+
+    // Iterate over the predictions
     for (int i = 0; i < numBoxes; ++i)
     {
-        // Extract bounding box coordinates
-        float x_center = outputBoxes[i * 4];
-        float y_center = outputBoxes[i * 4 + 1];
-        float width = outputBoxes[i * 4 + 2];
-        float height = outputBoxes[i * 4 + 3];
+        int index = i * 16;
 
-        // Ensure box is within valid range
-        int x_min = static_cast<int>(std::max((x_center - width / 2) * imageWidth, 0.0f));
-        int y_min = static_cast<int>(std::max((y_center - height / 2) * imageHeight, 0.0f));
-        int box_width = static_cast<int>(width * imageWidth);
-        int box_height = static_cast<int>(height * imageHeight);
+        // Object confidence
+        float confidence = output[index + 4];
 
-        float confidence = outputScores[i]; // Get confidence score
-        int classId = outputClasses[i];     // Get the predicted class ID
-
-        // Only consider boxes with confidence greater than the threshold
-        if (confidence > confThreshold)
+        if (confidence >= conf_thres)
         {
-            boxes.emplace_back(x_min, y_min, box_width, box_height);
-            confidences.push_back(confidence);
-            classIds.push_back(classId);
+            // Extract box coordinates and dimensions (center x, center y, width, height)
+            float x_center = output[index];     // Center x (normalized)
+            float y_center = output[index + 1]; // Center y (normalized)
+            float width = output[index + 2];    // Width (normalized)
+            float height = output[index + 3];   // Height (normalized)
 
-            // Print out the details of the detected objects with actual class names
-            std::cout << "Detected object: " << labels[classId] // Use class name from the labels array
-                      << " with confidence: " << confidence
-                      << ", Bounding Box [x_min: " << x_min
-                      << ", y_min: " << y_min
-                      << ", width: " << box_width
-                      << ", height: " << box_height
-                      << "]" << std::endl;
+            // Store box coordinates (in pixels)
+            boxes.push_back(xywh2xyxy(x_center, y_center, width, height));
+
+            // Store confidence score
+            confidences.push_back(confidence);
+
+            // Write raw data to the CSV after multiplying class confidence with object confidence
+            csvFile << x_center << "," << y_center << "," << width << "," << height << "," << confidence;
+
+            // Determine best class
+            float max_class_score = -1.0f;
+            int best_class = -1;
+            for (int j = 0; j < num_classes; ++j)
+            {
+                // Multiply class confidence with object confidence
+                float class_prob = output[index + 5 + j] * confidence;
+
+                // Write to CSV
+                csvFile << "," << class_prob;
+
+                if (class_prob > max_class_score)
+                {
+                    best_class = j;
+                    max_class_score = class_prob;
+                }
+            }
+            class_ids.push_back(best_class);
+            csvFile << std::endl;
         }
     }
 
-    // Perform Non-Maximum Suppression (NMS) with lower threshold
-    std::vector<int> nmsIndices;
-    cv::dnn::NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, nmsIndices);
+    // Close CSV file
+    csvFile.close();
+    std::cout << "Confidence-class multiplication data written to after_conf_cls_multiplication_cpp.csv." << std::endl;
 
-    // Debug: Print the number of boxes before and after NMS
-    std::cout << "Number of boxes before NMS: " << boxes.size() << std::endl;
-    std::cout << "Number of boxes after NMS: " << nmsIndices.size() << std::endl;
-
-    // Draw the boxes on the image
-    for (int idx : nmsIndices)
-    {
-        cv::Rect box = boxes[idx];
-        int classId = classIds[idx];
-        float confidence = confidences[idx];
-
-        // Draw bounding box
-        cv::rectangle(image, box, cv::Scalar(0, 255, 0), 2);
-
-        // Put label with class name and confidence
-        std::string label = labels[classId] + ": " + std::to_string(confidence);
-        int baseline = 0;
-        cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseline);
-        cv::rectangle(image, cv::Point(box.x, box.y - labelSize.height),
-                      cv::Point(box.x + labelSize.width, box.y + baseline), cv::Scalar(0, 255, 0), cv::FILLED);
-        cv::putText(image, label, cv::Point(box.x, box.y), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1);
-    }
-
-    // Save the result image
-    cv::imwrite("output_with_bboxes.jpg", image);
-    std::cout << "Saved output image with bounding boxes as 'output_with_bboxes.jpg'" << std::endl;
+    // Apply Non-Maximum Suppression (NMS)
+    return performNMS(boxes, confidences, class_ids, iou_thres);
 }
 
-// Preprocess image for ONNX input (resize and normalize)
+// Preprocess image for ONNX input (resize, normalize, convert to CHW format)
 std::vector<float> preprocessImage(cv::Mat &image, int inputWidth, int inputHeight)
 {
     cv::Mat resizedImage;
@@ -132,7 +167,7 @@ std::vector<float> preprocessImage(cv::Mat &image, int inputWidth, int inputHeig
     // Convert image to float and normalize
     paddedImage.convertTo(paddedImage, CV_32F, 1 / 255.0);
 
-    // Convert HWC to CHW format
+    // Convert HWC (height, width, channels) to CHW (channels, height, width) format
     std::vector<cv::Mat> channels(3);
     cv::split(paddedImage, channels);
 
@@ -142,37 +177,81 @@ std::vector<float> preprocessImage(cv::Mat &image, int inputWidth, int inputHeig
         inputTensorValues.insert(inputTensorValues.end(), (float *)channels[c].datastart, (float *)channels[c].dataend);
     }
 
+    std::cout << "Image preprocessed to CHW format." << std::endl;
     return inputTensorValues; // Tensor values in CHW format
 }
 
-void runInference(const std::string &modelPath, const std::string &imagePath)
+// Adjust bounding boxes to match original image size
+cv::Rect scaleBoundingBox(cv::Rect box, int originalWidth, int originalHeight, int inputWidth, int inputHeight, float scale)
 {
-    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "YOLOv4-Tiny");
-    Ort::SessionOptions sessionOptions;
-    Ort::Session session(env, modelPath.c_str(), sessionOptions);
+    int x_offset = (inputWidth - static_cast<int>(originalWidth * scale)) / 2;
+    int y_offset = (inputHeight - static_cast<int>(originalHeight * scale)) / 2;
 
+    // Scale the box dimensions back to the original image size
+    int x_min = static_cast<int>((box.x - x_offset) / scale);
+    int y_min = static_cast<int>((box.y - y_offset) / scale);
+    int width = static_cast<int>(box.width / scale);
+    int height = static_cast<int>(box.height / scale);
+
+    return cv::Rect(x_min, y_min, width, height);
+}
+
+void postProcessAndSaveImage(cv::Mat &image, const std::vector<float> &output, int imgWidth, int imgHeight, float conf_thres, float iou_thres)
+{
+    std::vector<cv::Rect> boxes;
+    std::vector<float> confidences;
+    std::vector<int> classIds;
+
+    // Perform NMS after processing output data
+    std::vector<int> nms_indices = non_max_suppression_face(output, boxes, confidences, classIds, conf_thres, iou_thres, 10);
+
+    // Calculate scale factor used during preprocessing
+    float scale = std::min(float(imgWidth) / image.cols, float(imgHeight) / image.rows);
+
+    // Open CSV file for NMS results
+    std::ofstream nmsCsvFile("nms_results_cpp.csv");
+    if (!nmsCsvFile.is_open())
+    {
+        std::cerr << "Error: Could not open nms_results_cpp.csv for writing." << std::endl;
+        return;
+    }
+
+    // Write header for NMS results
+    nmsCsvFile << "Box_X,Box_Y,Box_Width,Box_Height,Confidence,Class_ID" << std::endl;
+
+    // Log and draw bounding boxes after NMS
+    for (int idx : nms_indices)
+    {
+        // Scale the bounding box back to the original image size
+        cv::Rect scaled_box = scaleBoundingBox(boxes[idx], image.cols, image.rows, imgWidth, imgHeight, scale);
+
+        // Draw the scaled bounding box
+        cv::rectangle(image, scaled_box, cv::Scalar(0, 255, 0), 2);
+        std::string label = "Class: " + std::to_string(classIds[idx]) + " Confidence: " + std::to_string(confidences[idx]);
+        cv::putText(image, label, scaled_box.tl(), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1);
+
+        // Write NMS results to the CSV file
+        nmsCsvFile << scaled_box.x << "," << scaled_box.y << "," << scaled_box.width << "," << scaled_box.height << ","
+                   << confidences[idx] << "," << classIds[idx] << std::endl;
+
+        std::cout << "Bounding Box " << idx << ": " << scaled_box.x << ", " << scaled_box.y << ", " << scaled_box.width << ", " << scaled_box.height
+                  << " Confidence: " << confidences[idx] << " Class: " << classIds[idx] << std::endl;
+    }
+
+    nmsCsvFile.close();
+    cv::imwrite("output_with_bboxes_scaled.jpg", image);
+    std::cout << "Output image with scaled bounding boxes saved as 'output_with_bboxes_scaled.jpg'." << std::endl;
+}
+
+// Run inference using YOLOv5 model
+void runInference(const std::string &yolov5ModelPath, const std::string &imagePath, float conf_thres, float iou_thres)
+{
+    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "YOLOv5");
+    Ort::SessionOptions sessionOptions;
+    Ort::Session yolov5Session(env, yolov5ModelPath.c_str(), sessionOptions);
     Ort::AllocatorWithDefaultOptions allocator;
 
-    // Get input/output info
-    auto inputNameAllocated = session.GetInputNameAllocated(0, allocator);
-    const char *inputName = inputNameAllocated.get(); // Extract raw pointer to input name
-
-    auto inputShape = session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
-    std::cout << "Input shape: ";
-    for (auto s : inputShape)
-        std::cout << s << " ";
-    std::cout << std::endl;
-
-    // Get both output names
-    auto outputNameAllocated1 = session.GetOutputNameAllocated(0, allocator);
-    auto outputNameAllocated2 = session.GetOutputNameAllocated(1, allocator);
-    const char *outputName1 = outputNameAllocated1.get(); // Bounding boxes
-    const char *outputName2 = outputNameAllocated2.get(); // Class scores
-
-    int inputWidth = inputShape[3];
-    int inputHeight = inputShape[2];
-
-    // Read the input image
+    // Load input image
     cv::Mat image = cv::imread(imagePath);
     if (image.empty())
     {
@@ -180,70 +259,57 @@ void runInference(const std::string &modelPath, const std::string &imagePath)
         return;
     }
 
-    // Preprocess the image
-    std::vector<float> inputTensorValues = preprocessImage(image, inputWidth, inputHeight);
+    // Get YOLOv5 input info
+    auto yolov5InputShape = yolov5Session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+    std::vector<float> yolov5InputValues = preprocessImage(image, yolov5InputShape[3], yolov5InputShape[2]);
 
-    // Prepare input tensor
+    // Create input tensor for YOLOv5
     Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-    Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
-        memoryInfo, inputTensorValues.data(), inputTensorValues.size(),
-        inputShape.data(), inputShape.size());
+    Ort::Value yolov5InputTensor = Ort::Value::CreateTensor<float>(
+        memoryInfo, yolov5InputValues.data(), yolov5InputValues.size(), yolov5InputShape.data(), yolov5InputShape.size());
 
-    // Run inference, expecting two outputs: one for boxes and one for class scores
-    std::vector<const char *> inputNames = {inputName};
-    std::vector<const char *> outputNames = {outputName1, outputName2}; // Bounding boxes and class scores
-    std::vector<Ort::Value> outputTensors = session.Run(
-        Ort::RunOptions{nullptr}, inputNames.data(), &inputTensor, 1, outputNames.data(), 2);
+    // Allocate memory for YOLOv5 input/output names
+    auto yolov5InputNameAllocated = yolov5Session.GetInputNameAllocated(0, allocator);
+    const char *yolov5InputName = yolov5InputNameAllocated.get();
+    auto yolov5OutputNameAllocated = yolov5Session.GetOutputNameAllocated(0, allocator);
+    const char *yolov5OutputName = yolov5OutputNameAllocated.get();
 
-    if (outputTensors.size() != 2)
-    {
-        std::cerr << "Expected 2 output tensors (boxes and scores), got " << outputTensors.size() << std::endl;
-        return;
-    }
+    // Log the start of inference
+    std::cout << "Running YOLOv5 inference..." << std::endl;
 
-    // Get outputs (bounding boxes and class scores)
-    float *outputBoxes = outputTensors[0].GetTensorMutableData<float>();
-    float *outputScores = outputTensors[1].GetTensorMutableData<float>();
+    // Run YOLOv5 inference
+    std::vector<const char *> yolov5InputNames = {yolov5InputName};
+    std::vector<const char *> yolov5OutputNames = {yolov5OutputName};
+    auto yolov5OutputTensors = yolov5Session.Run(Ort::RunOptions{nullptr}, yolov5InputNames.data(), &yolov5InputTensor, 1, yolov5OutputNames.data(), 1);
 
-    int numBoxes = outputTensors[0].GetTensorTypeAndShapeInfo().GetShape()[1]; // Number of detections
+    // Log after inference completion
+    std::cout << "YOLOv5 inference completed." << std::endl;
 
-    std::vector<int> outputClasses(numBoxes);
-    std::vector<float> confidences(numBoxes);
+    // Access tensor data correctly for YOLOv5 output
+    const float *yolov5OutputData = yolov5OutputTensors[0].GetTensorMutableData<float>();
+    size_t outputSize = yolov5OutputTensors[0].GetTensorTypeAndShapeInfo().GetElementCount();
 
-    int numClasses = 80; // Assuming COCO dataset
+    // Store the output data in a vector
+    std::vector<float> outputData(yolov5OutputData, yolov5OutputData + outputSize);
 
-    // Get the class with the highest score
-    for (int i = 0; i < numBoxes; i++)
-    {
-        float maxScore = 0.0f;
-        int bestClass = -1;
-        for (int j = 0; j < numClasses; j++)
-        {
-            float score = outputScores[i * numClasses + j];
-            if (score > maxScore)
-            {
-                maxScore = score;
-                bestClass = j;
-            }
-        }
-        confidences[i] = maxScore;
-        outputClasses[i] = bestClass;
-    }
+    // Log output size
+    std::cout << "Output size: " << outputSize << std::endl;
 
-    // Post-process and save the image
-    postProcessAndSaveImage(image, std::vector<float>(outputBoxes, outputBoxes + numBoxes * 4),
-                            confidences, outputClasses, numBoxes, numClasses, inputWidth, inputHeight);
+    // Post-process output and save
+    postProcessAndSaveImage(image, outputData, yolov5InputShape[3], yolov5InputShape[2], conf_thres, iou_thres);
 }
 
 int main(int argc, char *argv[])
 {
-    if (argc < 3)
+    if (argc < 4)
     {
-        std::cerr << "Usage: " << argv[0] << " <model.onnx> <image>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <yolov5_model.onnx> <image> <conf_thres> <iou_thres>" << std::endl;
         return -1;
     }
 
-    runInference(argv[1], argv[2]);
+    float conf_thres = std::stof(argv[3]);
+    float iou_thres = std::stof(argv[4]);
+    runInference(argv[1], argv[2], conf_thres, iou_thres);
 
     return 0;
 }

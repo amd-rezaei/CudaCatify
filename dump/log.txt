@@ -1,7 +1,7 @@
-Input shape: 1 3 416 416 
-Detected object: person with confidence: 0.996764, Bounding Box [x_min: 5, y_min: 0, width: 259, height: 530]
-Detected object: person with confidence: 0.993044, Bounding Box [x_min: 12, y_min: 0, width: 254, height: 587]
-Detected object: person with confidence: 0.937412, Bounding Box [x_min: 12, y_min: 0, width: 255, height: 628]
-Number of boxes before NMS: 3
-Number of boxes after NMS: 1
-Saved output image with bounding boxes as 'output_with_bboxes.jpg'
+Image preprocessed to CHW format.
+Running YOLOv5 inference...
+YOLOv5 inference completed.
+Output size: 403200
+Confidence-class multiplication data written to after_conf_cls_multiplication_cpp.csv.
+Bounding Box 7: 171, 35, 46, 71 Confidence: 0.897864 Class: 8
+Output image with scaled bounding boxes saved as 'output_with_bboxes_scaled.jpg'.
