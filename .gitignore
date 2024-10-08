@@ -19,5 +19,5 @@ build/
 submodules/
 workspace/
 bin/
+dump/
 
-dump/onnxruntime-linux-x64-gpu-1.19.2.tgz
