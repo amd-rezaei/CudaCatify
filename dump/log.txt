@@ -3,28 +3,5 @@ Running YOLOv5 inference...
 YOLOv5 inference completed.
 Output size: 403200
 Confidence-class multiplication data written to after_conf_cls_multiplication_cpp.csv.
-Bounding Box 46: 465, 343, 36, 46 Confidence: 0.898308 Class: 2
-Bounding Box 232: 248, 237, 44, 55 Confidence: 0.897554 Class: 8
-Bounding Box 213: 250, 123, 46, 55 Confidence: 0.897194 Class: 8
-Bounding Box 172: 33, 341, 41, 54 Confidence: 0.888947 Class: 9
-Bounding Box 272: 568, 436, 41, 58 Confidence: 0.887177 Class: 2
-Bounding Box 211: 142, 125, 39, 50 Confidence: 0.886519 Class: 8
-Bounding Box 209: 37, 128, 40, 52 Confidence: 0.886467 Class: 9
-Bounding Box 243: 142, 336, 36, 50 Confidence: 0.883751 Class: 7
-Bounding Box 266: 246, 446, 38, 53 Confidence: 0.883677 Class: 9
-Bounding Box 233: 359, 233, 41, 54 Confidence: 0.882515 Class: 2
-Bounding Box 229: 139, 232, 43, 56 Confidence: 0.881994 Class: 7
-Bounding Box 263: 31, 442, 42, 54 Confidence: 0.881985 Class: 9
-Bounding Box 223: 564, 133, 39, 51 Confidence: 0.88143 Class: 2
-Bounding Box 264: 140, 450, 39, 50 Confidence: 0.881364 Class: 9
-Bounding Box 236: 463, 243, 35, 45 Confidence: 0.881148 Class: 2
-Bounding Box 245: 245, 335, 38, 51 Confidence: 0.879765 Class: 7
-Bounding Box 247: 351, 335, 37, 49 Confidence: 0.879581 Class: 8
-Bounding Box 216: 355, 124, 40, 56 Confidence: 0.877721 Class: 8
-Bounding Box 269: 353, 443, 39, 54 Confidence: 0.877627 Class: 9
-Bounding Box 154: 37, 230, 39, 50 Confidence: 0.877598 Class: 7
-Bounding Box 251: 573, 339, 39, 49 Confidence: 0.875715 Class: 2
-Bounding Box 218: 460, 129, 43, 59 Confidence: 0.86443 Class: 2
-Bounding Box 200: 458, 447, 41, 59 Confidence: 0.864088 Class: 9
-Bounding Box 237: 569, 231, 43, 53 Confidence: 0.849107 Class: 2
-Output image saved as 'output_with_bboxes.jpg'.
+Bounding Box 7: 171, 35, 46, 71 Confidence: 0.897864 Class: 8
+Output image with scaled bounding boxes saved as 'output_with_bboxes_scaled.jpg'.

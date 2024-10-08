@@ -181,7 +181,21 @@ std::vector<float> preprocessImage(cv::Mat &image, int inputWidth, int inputHeig
     return inputTensorValues; // Tensor values in CHW format
 }
 
-// Post-process and save the image with bounding boxes and write NMS results to CSV
+// Adjust bounding boxes to match original image size
+cv::Rect scaleBoundingBox(cv::Rect box, int originalWidth, int originalHeight, int inputWidth, int inputHeight, float scale)
+{
+    int x_offset = (inputWidth - static_cast<int>(originalWidth * scale)) / 2;
+    int y_offset = (inputHeight - static_cast<int>(originalHeight * scale)) / 2;
+
+    // Scale the box dimensions back to the original image size
+    int x_min = static_cast<int>((box.x - x_offset) / scale);
+    int y_min = static_cast<int>((box.y - y_offset) / scale);
+    int width = static_cast<int>(box.width / scale);
+    int height = static_cast<int>(box.height / scale);
+
+    return cv::Rect(x_min, y_min, width, height);
+}
+
 void postProcessAndSaveImage(cv::Mat &image, const std::vector<float> &output, int imgWidth, int imgHeight, float conf_thres, float iou_thres)
 {
     std::vector<cv::Rect> boxes;
@@ -190,6 +204,9 @@ void postProcessAndSaveImage(cv::Mat &image, const std::vector<float> &output, i
 
     // Perform NMS after processing output data
     std::vector<int> nms_indices = non_max_suppression_face(output, boxes, confidences, classIds, conf_thres, iou_thres, 10);
+
+    // Calculate scale factor used during preprocessing
+    float scale = std::min(float(imgWidth) / image.cols, float(imgHeight) / image.rows);
 
     // Open CSV file for NMS results
     std::ofstream nmsCsvFile("nms_results_cpp.csv");
@@ -205,22 +222,25 @@ void postProcessAndSaveImage(cv::Mat &image, const std::vector<float> &output, i
     // Log and draw bounding boxes after NMS
     for (int idx : nms_indices)
     {
-        cv::Rect box = boxes[idx];
-        cv::rectangle(image, box, cv::Scalar(0, 255, 0), 2);
+        // Scale the bounding box back to the original image size
+        cv::Rect scaled_box = scaleBoundingBox(boxes[idx], image.cols, image.rows, imgWidth, imgHeight, scale);
+
+        // Draw the scaled bounding box
+        cv::rectangle(image, scaled_box, cv::Scalar(0, 255, 0), 2);
         std::string label = "Class: " + std::to_string(classIds[idx]) + " Confidence: " + std::to_string(confidences[idx]);
-        cv::putText(image, label, box.tl(), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1);
+        cv::putText(image, label, scaled_box.tl(), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1);
 
         // Write NMS results to the CSV file
-        nmsCsvFile << box.x << "," << box.y << "," << box.width << "," << box.height << ","
+        nmsCsvFile << scaled_box.x << "," << scaled_box.y << "," << scaled_box.width << "," << scaled_box.height << ","
                    << confidences[idx] << "," << classIds[idx] << std::endl;
 
-        std::cout << "Bounding Box " << idx << ": " << box.x << ", " << box.y << ", " << box.width << ", " << box.height
+        std::cout << "Bounding Box " << idx << ": " << scaled_box.x << ", " << scaled_box.y << ", " << scaled_box.width << ", " << scaled_box.height
                   << " Confidence: " << confidences[idx] << " Class: " << classIds[idx] << std::endl;
     }
 
     nmsCsvFile.close();
-    cv::imwrite("output_with_bboxes.jpg", image);
-    std::cout << "Output image saved as 'output_with_bboxes.jpg'." << std::endl;
+    cv::imwrite("output_with_bboxes_scaled.jpg", image);
+    std::cout << "Output image with scaled bounding boxes saved as 'output_with_bboxes_scaled.jpg'." << std::endl;
 }
 
 // Run inference using YOLOv5 model
