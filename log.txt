@@ -1,4 +1,3 @@
-Image preprocessed to CHW format.
 Running YOLOv5 inference...
 YOLOv5 inference completed.
 Scaled Bounding Box: [x=567, y=368, width=286, height=459]

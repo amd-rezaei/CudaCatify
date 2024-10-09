@@ -6,6 +6,10 @@
 #include <cmath>
 #include <algorithm>
 #include <numeric>
+#include <npp.h>
+#include <cuda_runtime.h>
+#include <iostream>
+
 
 // Helper function to apply sigmoid
 float sigmoid(float x)
@@ -114,40 +118,91 @@ std::vector<int> non_max_suppression_face(const std::vector<float> &output, std:
     return performNMS(boxes, confidences, class_ids, iou_thres);
 }
 
-// Preprocess image for ONNX input (resize, normalize, convert to CHW format)
+// Preprocess image for ONNX input using OpenCV for resizing and padding, then NPP for conversion, normalization, and CHW reformat
 std::vector<float> preprocessImage(cv::Mat &image, int inputWidth, int inputHeight)
 {
-    cv::Mat resizedImage;
+    if (image.empty())
+    {
+        return {};
+    }
+
     int originalHeight = image.rows;
     int originalWidth = image.cols;
 
-    // Resize the image while maintaining the aspect ratio
+    // Step 1: Resize and pad image using OpenCV
     float scale = std::min(float(inputWidth) / originalWidth, float(inputHeight) / originalHeight);
     int newWidth = static_cast<int>(originalWidth * scale);
     int newHeight = static_cast<int>(originalHeight * scale);
 
-    // Resize the image and pad it to keep the aspect ratio (use 128 as padding value)
+    cv::Mat resizedImage;
     cv::resize(image, resizedImage, cv::Size(newWidth, newHeight));
-    cv::Mat paddedImage(inputHeight, inputWidth, CV_32FC3, cv::Scalar(128, 128, 128));
 
-    // Center the resized image
+    // Pad the resized image to fit the target size
+    cv::Mat paddedImage(inputHeight, inputWidth, CV_8UC3, cv::Scalar(128, 128, 128));
     resizedImage.copyTo(paddedImage(cv::Rect((inputWidth - newWidth) / 2, (inputHeight - newHeight) / 2, newWidth, newHeight)));
 
-    // Convert image to float and normalize
-    paddedImage.convertTo(paddedImage, CV_32F, 1 / 255.0);
+    // Step 2: Use NPP for image conversion and normalization
 
-    // Convert HWC (height, width, channels) to CHW (channels, height, width) format
-    std::vector<cv::Mat> channels(3);
-    cv::split(paddedImage, channels);
+    // Allocate GPU memory for input and output images
+    Npp8u *d_inputImage = nullptr;
+    Npp32f *d_outputImage = nullptr;
 
-    std::vector<float> inputTensorValues;
-    for (int c = 0; c < 3; ++c)
+    size_t inputImageSize = paddedImage.total() * paddedImage.elemSize();
+    size_t outputImageSize = inputWidth * inputHeight * 3 * sizeof(Npp32f); // 3 channels, float32 format
+
+    // Allocate memory on GPU for input and output
+    cudaMalloc(&d_inputImage, inputImageSize);
+    cudaMalloc(&d_outputImage, outputImageSize);
+
+    // Copy the padded image from host to device
+    cudaMemcpy(d_inputImage, paddedImage.data, inputImageSize, cudaMemcpyHostToDevice);
+
+    // Convert image from Npp8u (uint8) to Npp32f (float32)
+    NppiSize srcSize = {inputWidth, inputHeight};
+    NppStatus nppStatus = nppiConvert_8u32f_C3R(d_inputImage, inputWidth * 3, d_outputImage, inputWidth * 3 * sizeof(Npp32f), srcSize);
+    if (nppStatus != NPP_SUCCESS)
     {
-        inputTensorValues.insert(inputTensorValues.end(), (float *)channels[c].datastart, (float *)channels[c].dataend);
+        cudaFree(d_inputImage);
+        cudaFree(d_outputImage);
+        return {};
     }
 
-    std::cout << "Image preprocessed to CHW format." << std::endl;
-    return inputTensorValues; // Tensor values in CHW format
+    // Step 3: Normalize the image (0-255 to 0-1) using NPP
+    Npp32f divConstants[3] = {255.0f, 255.0f, 255.0f};
+    nppStatus = nppiDivC_32f_C3IR(divConstants, d_outputImage, inputWidth * 3 * sizeof(Npp32f), srcSize);
+    if (nppStatus != NPP_SUCCESS)
+    {
+        cudaFree(d_inputImage);
+        cudaFree(d_outputImage);
+        return {};
+    }
+
+    // Step 4: Copy data back to host after normalization
+    std::vector<float> inputTensorValues(outputImageSize / sizeof(Npp32f));
+    cudaMemcpy(inputTensorValues.data(), d_outputImage, outputImageSize, cudaMemcpyDeviceToHost);
+
+    // Free GPU memory
+    cudaFree(d_inputImage);
+    cudaFree(d_outputImage);
+
+    // Step 5: Convert the image data to CHW format (Channels-First) expected by YOLO model
+    std::vector<float> chwTensorValues;
+    chwTensorValues.reserve(outputImageSize); // Pre-allocate memory
+
+    // Copy data channel by channel (R, G, B)
+    for (int c = 0; c < 3; ++c)
+    {
+        for (int h = 0; h < inputHeight; ++h)
+        {
+            for (int w = 0; w < inputWidth; ++w)
+            {
+                chwTensorValues.push_back(inputTensorValues[h * inputWidth * 3 + w * 3 + c]);
+            }
+        }
+    }
+
+    // Return the tensor in CHW format
+    return chwTensorValues;
 }
 
 // Adjust bounding boxes to match original image size
