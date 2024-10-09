@@ -11,7 +11,7 @@ OBJ_DIR = obj
 BIN_DIR = bin
 
 # Targets
-TARGET = $(BIN_DIR)/yolov4_inference
+TARGET = $(BIN_DIR)/cudacatify
 OBJS = $(OBJ_DIR)/main.o
 
 # Default target

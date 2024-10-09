@@ -19,4 +19,5 @@ build/
 workspace/
 bin/
 dump/
+obj/
 
