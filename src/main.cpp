@@ -299,6 +299,97 @@ void replaceWithEmojiInPostProcess(cv::Mat &image, const std::vector<cv::Rect> &
     std::cout << "Output image with emojis saved as 'output_with_emojis.jpg'." << std::endl;
 }
 
+// Function to replace bounding boxes with emoji image using NPP for resizing and applying blending
+void replaceWithEmojiInPostProcessNPP(cv::Mat &image, const std::vector<cv::Rect> &boxes, const std::string &emojiPath, float blendRatio)
+{
+    // Load the emoji image
+    cv::Mat emoji = cv::imread(emojiPath, cv::IMREAD_UNCHANGED); // Load with alpha channel if available
+    if (emoji.empty())
+    {
+        std::cerr << "Error: Could not load emoji image!" << std::endl;
+        return;
+    }
+
+    // Check that the emoji has 4 channels (RGBA), otherwise add alpha channel
+    if (emoji.channels() == 3)
+    {
+        cv::cvtColor(emoji, emoji, cv::COLOR_BGR2BGRA);
+    }
+
+    // Ensure blendRatio is within valid range (0.0 to 1.0)
+    blendRatio = std::clamp(blendRatio, 0.0f, 1.0f);
+
+    // Replace each bounding box with the emoji using NPP for resizing
+    for (const auto &box : boxes)
+    {
+        std::cout << "Scaled Bounding Box: [x=" << box.x << ", y=" << box.y
+                  << ", width=" << box.width << ", height=" << box.height << "]" << std::endl;
+
+        // Resize the emoji to fit the bounding box using NPP
+        NppiSize srcSize = {emoji.cols, emoji.rows};
+        NppiSize dstSize = {box.width, box.height};
+
+        // Define steps (strides), which are the number of bytes per row
+        int srcStep = emoji.step;
+        int dstStep = box.width * 4; // 4 channels (RGBA)
+
+        // Allocate memory on the GPU for the source and destination
+        Npp8u *d_src = nullptr, *d_dst = nullptr;
+        cudaMalloc(&d_src, emoji.total() * emoji.elemSize());
+        cudaMalloc(&d_dst, dstStep * box.height);
+
+        // Copy the emoji to the device
+        cudaMemcpy(d_src, emoji.data, emoji.total() * emoji.elemSize(), cudaMemcpyHostToDevice);
+
+        // Perform NPP-based resizing
+        NppStatus status = nppiResize_8u_C4R(d_src, srcStep, srcSize, {0, 0, srcSize.width, srcSize.height}, d_dst, dstStep, dstSize, {0, 0, dstSize.width, dstSize.height}, NPPI_INTER_LINEAR);
+
+        if (status != NPP_SUCCESS)
+        {
+            std::cerr << "Error: NPP resize failed with error code: " << status << std::endl;
+            cudaFree(d_src);
+            cudaFree(d_dst);
+            return;
+        }
+
+        // Copy resized emoji back to the host
+        cv::Mat resized_emoji(box.height, box.width, CV_8UC4);
+        cudaMemcpy(resized_emoji.data, d_dst, dstStep * box.height, cudaMemcpyDeviceToHost);
+
+        // Ensure the emoji fits inside the image
+        if (box.x >= 0 && box.y >= 0 && (box.x + box.width <= image.cols) && (box.y + box.height <= image.rows))
+        {
+            // Region of interest (ROI) in the original image
+            cv::Mat roi = image(box);
+
+            // Handle transparency by blending the emoji with the ROI
+            for (int y = 0; y < resized_emoji.rows; ++y)
+            {
+                for (int x = 0; x < resized_emoji.cols; ++x)
+                {
+                    cv::Vec4b &emoji_pixel = resized_emoji.at<cv::Vec4b>(y, x);
+                    if (emoji_pixel[3] > 0) // If alpha > 0, blend pixel
+                    {
+                        cv::Vec3b &roi_pixel = roi.at<cv::Vec3b>(y, x);
+                        roi_pixel = cv::Vec3b(
+                            static_cast<uchar>(roi_pixel[0] * (1 - blendRatio) + emoji_pixel[0] * blendRatio),
+                            static_cast<uchar>(roi_pixel[1] * (1 - blendRatio) + emoji_pixel[1] * blendRatio),
+                            static_cast<uchar>(roi_pixel[2] * (1 - blendRatio) + emoji_pixel[2] * blendRatio));
+                    }
+                }
+            }
+        }
+
+        // Free GPU memory
+        cudaFree(d_src);
+        cudaFree(d_dst);
+    }
+
+    // Save the output image with emojis
+    cv::imwrite("output_with_emojis.jpg", image);
+    std::cout << "Output image with emojis saved as 'output_with_emojis.jpg'." << std::endl;
+}
+
 // Run inference using YOLOv5 model
 std::vector<cv::Rect> runInference(const std::string &yolov5ModelPath, const std::string &imagePath, float conf_thres, float iou_thres, std::vector<int> &classIds, int &imgWidth, int &imgHeight)
 {
@@ -354,14 +445,15 @@ std::vector<cv::Rect> runInference(const std::string &yolov5ModelPath, const std
 
 int main(int argc, char *argv[])
 {
-    if (argc < 6)
+    if (argc < 7)
     {
-        std::cerr << "Usage: " << argv[0] << " <yolov5_model.onnx> <image> <conf_thres> <iou_thres> <emoji.jpg>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <yolov5_model.onnx> <image> <conf_thres> <iou_thres> <emoji.jpg> <blend_ratio>" << std::endl;
         return -1;
     }
 
     float conf_thres = std::stof(argv[3]);
     float iou_thres = std::stof(argv[4]);
+    float blend_ratio = std::stof(argv[6]);
 
     // Load the image
     cv::Mat image = cv::imread(argv[2]);
@@ -377,8 +469,8 @@ int main(int argc, char *argv[])
     int imgHeight = image.rows;
     std::vector<cv::Rect> scaled_boxes = runInference(argv[1], argv[2], conf_thres, iou_thres, classIds, imgWidth, imgHeight);
 
-    // Replace detected bounding boxes with the emoji image
-    replaceWithEmojiInPostProcess(image, scaled_boxes, argv[5]);
+    // Replace detected bounding boxes with the emoji image, using the blend ratio
+    replaceWithEmojiInPostProcessNPP(image, scaled_boxes, argv[5], blend_ratio);
 
     return 0;
 }
