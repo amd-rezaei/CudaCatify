@@ -303,8 +303,8 @@ void replaceWithEmojiInPostProcess(cv::Mat &image, const std::vector<cv::Rect> &
     }
 
     // Save the output image with emojis
-    cv::imwrite("./data/output/output_with_emojis.jpg", image);
-    std::cout << "Output image with emojis saved as 'output_with_emojis.jpg'." << std::endl;
+    cv::imwrite("./data/output/output_private.jpg", image);
+    std::cout << "Output image with emojis saved as 'output_private.jpg'." << std::endl;
 }
 
 // Function to replace bounding boxes with emoji image using NPP for resizing and applying blending
@@ -394,23 +394,22 @@ void replaceWithEmojiInPostProcessNPP(cv::Mat &image, const std::vector<cv::Rect
     }
 
     // Save the output image with emojis
-    cv::imwrite("output_with_emojis.jpg", image);
-    std::cout << "Output image with emojis saved as 'output_with_emojis.jpg'." << std::endl;
+    cv::imwrite("output_private.jpg", image);
+    std::cout << "Output image with emojis saved as 'output_private.jpg'." << std::endl;
 }
 
-// Run inference using YOLOv5 model
-std::vector<cv::Rect> runInference(const std::string &yolov5ModelPath, const std::string &imagePath, float conf_thres, float iou_thres, std::vector<int> &classIds, int &imgWidth, int &imgHeight)
+// Existing `runInference` function for images:
+std::vector<cv::Rect> runInference(const std::string &yolov5ModelPath, cv::Mat &image, float conf_thres, float iou_thres, std::vector<int> &classIds, int &imgWidth, int &imgHeight)
 {
     Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "YOLOv5");
     Ort::SessionOptions sessionOptions;
     Ort::Session yolov5Session(env, yolov5ModelPath.c_str(), sessionOptions);
     Ort::AllocatorWithDefaultOptions allocator;
 
-    // Load input image
-    cv::Mat image = cv::imread(imagePath);
+    // Ensure the input image is not empty
     if (image.empty())
     {
-        std::cerr << "Error loading image!" << std::endl;
+        std::cerr << "Error: Image is empty!" << std::endl;
         return {};
     }
 
@@ -429,16 +428,10 @@ std::vector<cv::Rect> runInference(const std::string &yolov5ModelPath, const std
     auto yolov5OutputNameAllocated = yolov5Session.GetOutputNameAllocated(0, allocator);
     const char *yolov5OutputName = yolov5OutputNameAllocated.get();
 
-    // Log the start of inference
-    std::cout << "Running YOLOv5 inference..." << std::endl;
-
     // Run YOLOv5 inference
     std::vector<const char *> yolov5InputNames = {yolov5InputName};
     std::vector<const char *> yolov5OutputNames = {yolov5OutputName};
     auto yolov5OutputTensors = yolov5Session.Run(Ort::RunOptions{nullptr}, yolov5InputNames.data(), &yolov5InputTensor, 1, yolov5OutputNames.data(), 1);
-
-    // Log after inference completion
-    std::cout << "YOLOv5 inference completed." << std::endl;
 
     // Access tensor data correctly for YOLOv5 output
     const float *yolov5OutputData = yolov5OutputTensors[0].GetTensorMutableData<float>();
@@ -451,20 +444,71 @@ std::vector<cv::Rect> runInference(const std::string &yolov5ModelPath, const std
     return postProcessAndReturnBoxes(image, outputData, yolov5InputShape[3], yolov5InputShape[2], conf_thres, iou_thres, classIds);
 }
 
+// Function to process video
+void runInferenceVideo(const std::string &onnx_model, const std::string &video_path, const std::string &emoji_path, float conf_thres, float iou_thres, float blend_ratio, const std::string &output_dir)
+{
+    // Open the video file
+    cv::VideoCapture cap(video_path);
+    if (!cap.isOpened())
+    {
+        std::cerr << "Error: Could not open video file!" << std::endl;
+        return;
+    }
+
+    // Get video information
+    int frame_width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
+    int frame_height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+    int fps = static_cast<int>(cap.get(cv::CAP_PROP_FPS));
+
+    // Create VideoWriter to save output
+    std::string baseName = getBaseName(video_path); // Extract base name of input video
+    std::string output_file = output_dir + "/" + baseName + "_private.avi";
+    cv::VideoWriter writer(output_file, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps, cv::Size(frame_width, frame_height));
+
+    // Loop through each frame of the video
+    cv::Mat frame;
+    while (cap.read(frame))
+    {
+        if (frame.empty())
+        {
+            std::cerr << "Error: Could not read frame!" << std::endl;
+            break;
+        }
+
+        // Run inference on each frame using runInference function
+        std::vector<int> classIds;
+        int imgWidth = frame.cols;
+        int imgHeight = frame.rows;
+        std::vector<cv::Rect> scaled_boxes = runInference(onnx_model, frame, conf_thres, iou_thres, classIds, imgWidth, imgHeight); // Passing frame here
+
+        // Replace detected bounding boxes with the emoji image, using the blend ratio
+        replaceWithEmojiInPostProcessNPP(frame, scaled_boxes, emoji_path, blend_ratio);
+
+        // Write the processed frame to the output video
+        writer.write(frame);
+    }
+
+    // Release the video capture and writer
+    cap.release();
+    writer.release();
+
+    std::cout << "Processed video saved as: " << output_file << std::endl;
+}
+
 int main(int argc, char *argv[])
 {
-    cxxopts::Options options("cudacatify", "A description of cudacatify");
+    cxxopts::Options options("cudacatify", "Process video or image with emoji overlays");
 
-    // Define the available options (no onnx_model or jpg_photo here)
-    options.add_options()("emoji", "Path to the emoji image", cxxopts::value<std::string>()->default_value("./data/input/kitty_emoji.png"))("conf_thres", "Confidence threshold", cxxopts::value<float>()->default_value("0.5"))("iou_thresh", "IoU threshold", cxxopts::value<float>()->default_value("0.5"))("blend_thresh", "Blend threshold", cxxopts::value<float>()->default_value("1.0"))("output_dir", "Output directory", cxxopts::value<std::string>()->default_value("./data/output/"))("h,help", "Print usage");
+    // Define options (without onnx_model, image, or video in this block)
+    options.add_options()("emoji", "Path to the emoji image", cxxopts::value<std::string>()->default_value("./data/input/kitty_emoji.png"))("conf_thres", "Confidence threshold", cxxopts::value<float>()->default_value("0.5"))("iou_thres", "IoU threshold", cxxopts::value<float>()->default_value("0.5"))("blend_thresh", "Blend threshold", cxxopts::value<float>()->default_value("1.0"))("output_dir", "Output directory", cxxopts::value<std::string>()->default_value("./data/output/"))("help", "Print help");
 
-    // Mark 'onnx_model' and 'jpg_photo' as positional arguments
-    options.add_options()("onnx_model", "Path to the ONNX model", cxxopts::value<std::string>())("jpg_photo", "Path to the input image", cxxopts::value<std::string>());
+    // Add positional arguments (onnx_model, input)
+    options.add_options()("onnx_model", "Path to the ONNX model", cxxopts::value<std::string>())("input", "Path to the input (image or video)", cxxopts::value<std::string>());
 
-    options.parse_positional({"onnx_model", "jpg_photo"});
-    options.positional_help("<onnx_model> <jpg_photo>").show_positional_help();
+    // Define positional arguments
+    options.parse_positional({"onnx_model", "input"});
 
-    // Parse the arguments
+    // Parse arguments
     auto result = options.parse(argc, argv);
 
     // Handle help
@@ -474,52 +518,68 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    // Required positional arguments
-    if (!result.count("onnx_model") || !result.count("jpg_photo"))
+    // Check for positional arguments
+    if (!result.count("onnx_model") || !result.count("input"))
     {
-        std::cerr << "Error: <onnx_model> and <jpg_photo> are required." << std::endl;
+        std::cerr << "Error: <onnx_model> and <input (image or video)> are required." << std::endl;
         std::cout << options.help() << std::endl;
         return -1;
     }
 
-    // Accessing positional arguments
+    // Access positional arguments
     std::string onnx_model = result["onnx_model"].as<std::string>();
-    std::string jpg_photo = result["jpg_photo"].as<std::string>();
+    std::string input = result["input"].as<std::string>();
 
-    // Optional arguments with default values
     std::string optional_emoji = result["emoji"].as<std::string>();
     float optional_conf_thres = result["conf_thres"].as<float>();
-    float optional_iou_thresh = result["iou_thresh"].as<float>();
-    float optional_blend_threshold = result["blend_thresh"].as<float>();
+    float optional_iou_thresh = result["iou_thres"].as<float>();
+    float optional_blend_thresh = result["blend_thresh"].as<float>();
     std::string optional_output_dir = result["output_dir"].as<std::string>();
 
-    // Load the image
-    cv::Mat image = cv::imread(jpg_photo);
-    if (image.empty())
-    {
-        std::cerr << "Error: Could not load image!" << std::endl;
-        return -1;
-    }
-
-    // Run inference to get scaled bounding boxes and class IDs
-    std::vector<int> classIds;
-    int imgWidth = image.cols;
-    int imgHeight = image.rows;
-    std::vector<cv::Rect> scaled_boxes = runInference(onnx_model, jpg_photo, optional_conf_thres, optional_iou_thresh, classIds, imgWidth, imgHeight);
-
-    // Replace detected bounding boxes with the emoji image, using the blend ratio
-    replaceWithEmojiInPostProcessNPP(image, scaled_boxes, optional_emoji, optional_blend_threshold);
-
-    // Generate output filename based on the input image
-    std::string baseName = getBaseName(jpg_photo); // Extract the base name of the input image
-    std::string output_file = optional_output_dir + "/" + baseName + "_private.jpg";
-
-    // Ensure the output directory exists
+    // Create output directory if it does not exist
     std::filesystem::create_directories(optional_output_dir);
 
-    // Save the output image
-    cv::imwrite(output_file, image);
-    std::cout << "Output image saved as: " << output_file << std::endl;
+    // Detect file extension and make it lowercase for comparison
+    std::string extension = std::filesystem::path(input).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower); // Convert extension to lowercase
+
+    if (extension == ".jpg" || extension == ".jpeg" || extension == ".png")
+    {
+        // Process an image
+        cv::Mat image = cv::imread(input);
+        if (image.empty())
+        {
+            std::cerr << "Error: Could not load image!" << std::endl;
+            return -1;
+        }
+
+        // Run inference to get scaled bounding boxes and class IDs
+        std::vector<int> classIds;
+        int imgWidth = image.cols;
+        int imgHeight = image.rows;
+        std::vector<cv::Rect> scaled_boxes = runInference(onnx_model, image, optional_conf_thres, optional_iou_thresh, classIds, imgWidth, imgHeight);
+
+        // Replace detected bounding boxes with the emoji image, using the blend ratio
+        replaceWithEmojiInPostProcessNPP(image, scaled_boxes, optional_emoji, optional_blend_thresh);
+
+        // Generate output filename based on the input image
+        std::string baseName = getBaseName(input); // Extract the base name of the input image
+        std::string output_file = optional_output_dir + "/" + baseName + "_private.jpg";
+
+        // Save the output image
+        cv::imwrite(output_file, image);
+        std::cout << "Output image saved as: " << output_file << std::endl;
+    }
+    else if (extension == ".mp4" || extension == ".avi")
+    {
+        // Process a video
+        runInferenceVideo(onnx_model, input, optional_emoji, optional_conf_thres, optional_iou_thresh, optional_blend_thresh, optional_output_dir);
+    }
+    else
+    {
+        std::cerr << "Error: Unsupported file format!" << std::endl;
+        return -1;
+    }
 
     return 0;
 }

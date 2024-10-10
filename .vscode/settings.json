@@ -83,6 +83,7 @@
         "locale": "cpp",
         "__bit_reference": "cpp",
         "filesystem": "cpp",
-        "__node_handle": "cpp"
+        "__node_handle": "cpp",
+        "__mutex_base": "cpp"
     }
 }
