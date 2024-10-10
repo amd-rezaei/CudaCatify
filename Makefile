@@ -1,9 +1,9 @@
-# Libraries
-LDFLAGS = -L/home/amd/libs/onnxruntime/lib -lonnxruntime -lcudart -lnppicc -lnppig -lnppial -lnppidei -lnppist `pkg-config --libs opencv4`
-
 # Compiler and flags
 CXX = g++
-CXXFLAGS = -I/home/amd/libs/onnxruntime/include -I/usr/local/cuda/include -I/usr/local/cuda/samples/common/inc `pkg-config --cflags opencv4`
+CXXFLAGS = -std=c++17 -I/home/amd/libs/onnxruntime/include -I/usr/local/cuda/include -I/usr/local/cuda/samples/common/inc -I/home/amd/Projects/CudaCatify/include `pkg-config --cflags opencv4`
+
+# Libraries
+LDFLAGS = -L/home/amd/libs/onnxruntime/lib -lonnxruntime -lcudart -lnppicc -lnppig -lnppial -lnppidei -lnppist `pkg-config --libs opencv4`
 
 # Directories
 SRC_DIR = src

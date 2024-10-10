@@ -9,7 +9,15 @@
 #include <npp.h>
 #include <cuda_runtime.h>
 #include <iostream>
+#include <cxxopts.hpp>
+#include <filesystem> // For std::filesystem::path
 
+std::string getBaseName(const std::string &filepath)
+{
+    // Use std::filesystem to extract the filename without extension
+    std::filesystem::path p(filepath);
+    return p.stem().string(); // Returns the filename without the extension
+}
 
 // Helper function to apply sigmoid
 float sigmoid(float x)
@@ -295,7 +303,7 @@ void replaceWithEmojiInPostProcess(cv::Mat &image, const std::vector<cv::Rect> &
     }
 
     // Save the output image with emojis
-    cv::imwrite("output_with_emojis.jpg", image);
+    cv::imwrite("./data/output/output_with_emojis.jpg", image);
     std::cout << "Output image with emojis saved as 'output_with_emojis.jpg'." << std::endl;
 }
 
@@ -445,18 +453,48 @@ std::vector<cv::Rect> runInference(const std::string &yolov5ModelPath, const std
 
 int main(int argc, char *argv[])
 {
-    if (argc < 7)
+    cxxopts::Options options("cudacatify", "A description of cudacatify");
+
+    // Define the available options (no onnx_model or jpg_photo here)
+    options.add_options()("emoji", "Path to the emoji image", cxxopts::value<std::string>()->default_value("./data/input/kitty_emoji.png"))("conf_thres", "Confidence threshold", cxxopts::value<float>()->default_value("0.5"))("iou_thresh", "IoU threshold", cxxopts::value<float>()->default_value("0.5"))("blend_thresh", "Blend threshold", cxxopts::value<float>()->default_value("1.0"))("output_dir", "Output directory", cxxopts::value<std::string>()->default_value("./data/output/"))("h,help", "Print usage");
+
+    // Mark 'onnx_model' and 'jpg_photo' as positional arguments
+    options.add_options()("onnx_model", "Path to the ONNX model", cxxopts::value<std::string>())("jpg_photo", "Path to the input image", cxxopts::value<std::string>());
+
+    options.parse_positional({"onnx_model", "jpg_photo"});
+    options.positional_help("<onnx_model> <jpg_photo>").show_positional_help();
+
+    // Parse the arguments
+    auto result = options.parse(argc, argv);
+
+    // Handle help
+    if (result.count("help"))
     {
-        std::cerr << "Usage: " << argv[0] << " <yolov5_model.onnx> <image> <conf_thres> <iou_thres> <emoji.jpg> <blend_ratio>" << std::endl;
+        std::cout << options.help() << std::endl;
+        return 0;
+    }
+
+    // Required positional arguments
+    if (!result.count("onnx_model") || !result.count("jpg_photo"))
+    {
+        std::cerr << "Error: <onnx_model> and <jpg_photo> are required." << std::endl;
+        std::cout << options.help() << std::endl;
         return -1;
     }
 
-    float conf_thres = std::stof(argv[3]);
-    float iou_thres = std::stof(argv[4]);
-    float blend_ratio = std::stof(argv[6]);
+    // Accessing positional arguments
+    std::string onnx_model = result["onnx_model"].as<std::string>();
+    std::string jpg_photo = result["jpg_photo"].as<std::string>();
+
+    // Optional arguments with default values
+    std::string optional_emoji = result["emoji"].as<std::string>();
+    float optional_conf_thres = result["conf_thres"].as<float>();
+    float optional_iou_thresh = result["iou_thresh"].as<float>();
+    float optional_blend_threshold = result["blend_thresh"].as<float>();
+    std::string optional_output_dir = result["output_dir"].as<std::string>();
 
     // Load the image
-    cv::Mat image = cv::imread(argv[2]);
+    cv::Mat image = cv::imread(jpg_photo);
     if (image.empty())
     {
         std::cerr << "Error: Could not load image!" << std::endl;
@@ -467,10 +505,21 @@ int main(int argc, char *argv[])
     std::vector<int> classIds;
     int imgWidth = image.cols;
     int imgHeight = image.rows;
-    std::vector<cv::Rect> scaled_boxes = runInference(argv[1], argv[2], conf_thres, iou_thres, classIds, imgWidth, imgHeight);
+    std::vector<cv::Rect> scaled_boxes = runInference(onnx_model, jpg_photo, optional_conf_thres, optional_iou_thresh, classIds, imgWidth, imgHeight);
 
     // Replace detected bounding boxes with the emoji image, using the blend ratio
-    replaceWithEmojiInPostProcessNPP(image, scaled_boxes, argv[5], blend_ratio);
+    replaceWithEmojiInPostProcessNPP(image, scaled_boxes, optional_emoji, optional_blend_threshold);
+
+    // Generate output filename based on the input image
+    std::string baseName = getBaseName(jpg_photo); // Extract the base name of the input image
+    std::string output_file = optional_output_dir + "/" + baseName + "_private.jpg";
+
+    // Ensure the output directory exists
+    std::filesystem::create_directories(optional_output_dir);
+
+    // Save the output image
+    cv::imwrite(output_file, image);
+    std::cout << "Output image saved as: " << output_file << std::endl;
 
     return 0;
 }
