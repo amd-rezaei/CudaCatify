@@ -392,10 +392,6 @@ void replaceWithEmojiInPostProcessNPP(cv::Mat &image, const std::vector<cv::Rect
         cudaFree(d_src);
         cudaFree(d_dst);
     }
-
-    // Save the output image with emojis
-    cv::imwrite("output_private.jpg", image);
-    std::cout << "Output image with emojis saved as 'output_private.jpg'." << std::endl;
 }
 
 // Existing `runInference` function for images:

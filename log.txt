@@ -1,3 +1,0 @@
-Scaled Bounding Box: [x=2156, y=3750, width=177, height=260]
-Output image with emojis saved as 'output_private.jpg'.
-Output image saved as: ./data/output//pedestrian_private.jpg

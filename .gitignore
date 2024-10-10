@@ -16,6 +16,8 @@ build/
 *.log
 *.tmp
 
+log.txt
+
 workspace/
 bin/
 dump/
