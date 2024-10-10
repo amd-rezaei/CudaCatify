@@ -1,0 +1,44 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # Ensure submodules are initialized and updated
+    - name: Initialize submodules
+      run: |
+        git submodule init
+        git submodule update
+
+    # Install dependencies (OpenCV, ONNX Runtime, Google Test, CUDA)
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libopencv-dev libgtest-dev cmake
+        sudo apt-get install -y nvidia-cuda-toolkit
+        cd /usr/src/gtest
+        sudo cmake .
+        sudo make
+        sudo cp *.a /usr/lib
+
+    # Build the project
+    - name: Build the project
+      run: make
+
+    # Run tests
+    - name: Run unit tests
+      run: make test
+
+    # Clean up build artifacts
+    - name: Clean the build
+      run: make clean
