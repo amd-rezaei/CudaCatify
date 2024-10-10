@@ -23,4 +23,4 @@ bin/
 dump/
 obj/
 results/*
-py_scripts/
+py_scripts/*

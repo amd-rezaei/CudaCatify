@@ -1,2 +1,0 @@
-tensorrt==10.4.0
-tensorrt_cu12==10.4.0
