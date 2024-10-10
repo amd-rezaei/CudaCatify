@@ -1,4 +1,15 @@
 // main.cpp
+#ifdef UNIT_TEST
+// This section will only compile for unit testing
+
+int main(int argc, char **argv)
+{
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}
+
+#else
+// This section will compile for the main application logic
 #include "util.hpp"
 #include "inference.hpp"
 #include "postprocess.hpp"
@@ -73,3 +84,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+#endif

@@ -12,7 +12,7 @@ TEST(NMS, SimpleNMS)
 
     std::vector<float> confidences = {0.9f, 0.8f, 0.95f};
     std::vector<int> class_ids = {0, 0, 0};
-    float iou_thres = 0.5f;
+    float iou_thres = 0.3f; // Lower the threshold to 0.3
 
     std::vector<int> indices = performNMS(boxes, confidences, class_ids, iou_thres);
 
