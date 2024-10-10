@@ -19,11 +19,6 @@ std::string getBaseName(const std::string &filepath)
     return p.stem().string(); // Returns the filename without the extension
 }
 
-// Helper function to apply sigmoid
-float sigmoid(float x)
-{
-    return 1.0f / (1.0f + std::exp(-x));
-}
 
 // Function to clamp values
 float clamp(float value, float minValue, float maxValue)
@@ -251,60 +246,8 @@ std::vector<cv::Rect> postProcessAndReturnBoxes(cv::Mat &image, const std::vecto
     return scaled_boxes;
 }
 
-// Function to replace bounding boxes with emoji image
-void replaceWithEmojiInPostProcess(cv::Mat &image, const std::vector<cv::Rect> &boxes, const std::string &emojiPath)
-{
-    // Load the emoji image
-    cv::Mat emoji = cv::imread(emojiPath, cv::IMREAD_UNCHANGED); // Load with alpha channel if available
-    if (emoji.empty())
-    {
-        std::cerr << "Error: Could not load emoji image!" << std::endl;
-        return;
-    }
-
-    // Replace each bounding box with the emoji
-    for (const auto &box : boxes)
-    {
-        // Print out the scaled bounding box details
-        std::cout << "Scaled Bounding Box: [x=" << box.x << ", y=" << box.y
-                  << ", width=" << box.width << ", height=" << box.height << "]" << std::endl;
-
-        // Resize the emoji to fit the bounding box
-        cv::Mat resized_emoji;
-        cv::resize(emoji, resized_emoji, cv::Size(box.width, box.height));
-
-        // Ensure the emoji fits inside the image
-        if (box.x >= 0 && box.y >= 0 && (box.x + box.width <= image.cols) && (box.y + box.height <= image.rows))
-        {
-            // Region of interest (ROI) in the original image
-            cv::Mat roi = image(box);
-
-            // Handle transparency if emoji has 4 channels (RGBA)
-            if (resized_emoji.channels() == 4)
-            {
-                for (int y = 0; y < resized_emoji.rows; ++y)
-                {
-                    for (int x = 0; x < resized_emoji.cols; ++x)
-                    {
-                        cv::Vec4b &emoji_pixel = resized_emoji.at<cv::Vec4b>(y, x);
-                        if (emoji_pixel[3] > 0) // If alpha > 0, replace pixel
-                        {
-                            roi.at<cv::Vec3b>(y, x) = cv::Vec3b(emoji_pixel[0], emoji_pixel[1], emoji_pixel[2]); // Copy RGB
-                        }
-                    }
-                }
-            }
-            else
-            {
-                // If no alpha channel, simply copy the resized emoji to the region
-                resized_emoji.copyTo(roi);
-            }
-        }
-    }
-}
-
 // Function to replace bounding boxes with emoji image using NPP for resizing and applying blending
-void replaceWithEmojiInPostProcessNPP(cv::Mat &image, const std::vector<cv::Rect> &boxes, const std::string &emojiPath, float blendRatio)
+void replaceWithEmojiInPostProcess(cv::Mat &image, const std::vector<cv::Rect> &boxes, const std::string &emojiPath, float blendRatio)
 {
     // Load the emoji image
     cv::Mat emoji = cv::imread(emojiPath, cv::IMREAD_UNCHANGED); // Load with alpha channel if available
@@ -474,7 +417,7 @@ void runInferenceVideo(const std::string &onnx_model, const std::string &video_p
         std::vector<cv::Rect> scaled_boxes = runInference(onnx_model, frame, conf_thres, iou_thres, classIds, imgWidth, imgHeight); // Passing frame here
 
         // Replace detected bounding boxes with the emoji image, using the blend ratio
-        replaceWithEmojiInPostProcessNPP(frame, scaled_boxes, emoji_path, blend_ratio);
+        replaceWithEmojiInPostProcess(frame, scaled_boxes, emoji_path, blend_ratio);
 
         // Write the processed frame to the output video
         writer.write(frame);
@@ -552,7 +495,7 @@ int main(int argc, char *argv[])
         std::vector<cv::Rect> scaled_boxes = runInference(onnx_model, image, optional_conf_thres, optional_iou_thresh, classIds, imgWidth, imgHeight);
 
         // Replace detected bounding boxes with the emoji image, using the blend ratio
-        replaceWithEmojiInPostProcessNPP(image, scaled_boxes, optional_emoji, optional_blend_thresh);
+        replaceWithEmojiInPostProcess(image, scaled_boxes, optional_emoji, optional_blend_thresh);
 
         // Generate output filename based on the input image
         std::string baseName = getBaseName(input); // Extract the base name of the input image
