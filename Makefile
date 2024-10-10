@@ -3,7 +3,7 @@ CXX = g++
 CXXFLAGS = -std=c++17 -I/home/amd/libs/onnxruntime/include -I/usr/local/cuda/include -I/usr/local/cuda/samples/common/inc -I/home/amd/Projects/CudaCatify/include `pkg-config --cflags opencv4`
 
 # Libraries
-LDFLAGS = -L/home/amd/libs/onnxruntime/lib -lonnxruntime -lcudart -lnppicc -lnppig -lnppial -lnppidei -lnppist pkg-config --libs opencv4 -lgtest -lgtest_main -lpthread
+LDFLAGS = -L/home/amd/libs/onnxruntime/lib -lonnxruntime -lcudart -lnppicc -lnppig -lnppial -lnppidei -lnppist `pkg-config --libs opencv4` -lgtest -lgtest_main -lpthread
 
 # Directories
 SRC_DIR = src
@@ -60,7 +60,7 @@ $(TARGET): $(OBJS) | $(BIN_DIR)
 
 # Linking the test executable (define UNIT_TEST, and avoid compiling the main application logic)
 $(TEST_TARGET): $(TEST_OBJS) $(filter-out $(OBJ_DIR)/main.o, $(OBJS)) | $(BIN_DIR)
-	$(CXX) -DUNIT_TEST $(TEST_OBJS) $(filter-out $(OBJ_DIR)/main.o, $(OBJS)) -o $(TEST_TARGET) $(LDFLAGS)
+	$(CXX) -DUNIT_TEST $(TEST_OBJS) $(filter-out $(OBJ_DIR)/main.o, $(OBJS)) -o $(TEST_TARGET) $(LDFLAGS) `pkg-config --libs opencv4` -lgtest -lgtest_main -lpthread
 
 # Rule to compile each source file into an object file (for the main application)
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
@@ -77,6 +77,8 @@ clean:
 # Run unit tests (no external arguments are needed for unit tests)
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
+	rm -f $(TEST_TARGET)
+
 
 # Run cudacatify with external arguments (for inference or main functionality)
 run: $(TARGET)
