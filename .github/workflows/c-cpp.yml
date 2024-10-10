@@ -8,13 +8,14 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: true  # Ensure submodules are checked out
 
-    # Ensure submodules are initialized and updated
+    # Initialize and update submodules explicitly if not done automatically
     - name: Initialize submodules
       run: |
         git submodule init
@@ -42,3 +43,4 @@ jobs:
     # Clean up build artifacts
     - name: Clean the build
       run: make clean
+
