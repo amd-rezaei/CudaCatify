@@ -25,22 +25,29 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libopencv-dev libgtest-dev cmake
-        sudo apt-get install -y nvidia-cuda-toolkit
+        sudo apt-get install -y libopencv-dev libgtest-dev cmake nvidia-cuda-toolkit
         cd /usr/src/gtest
         sudo cmake .
         sudo make
         sudo cp /usr/src/googletest/googletest/lib/libgtest*.a /usr/lib/
 
+    # Install ONNX Runtime
+    - name: Install ONNX Runtime
+      run: |
+        git clone --recursive https://github.com/microsoft/onnxruntime
+        cd onnxruntime
+        ./build.sh --config Release --parallel --build_shared_lib
+        sudo cp -r build/Linux/Release/* /usr/local/
+        sudo cp -r include/* /usr/local/include/
+
     # Build the project
     - name: Build the project
       run: make
 
-    # Run tests
+    # Run unit tests
     - name: Run unit tests
       run: make test
 
     # Clean up build artifacts
     - name: Clean the build
       run: make clean
-
