@@ -301,10 +301,6 @@ void replaceWithEmojiInPostProcess(cv::Mat &image, const std::vector<cv::Rect> &
             }
         }
     }
-
-    // Save the output image with emojis
-    cv::imwrite("./data/output/output_private.jpg", image);
-    std::cout << "Output image with emojis saved as 'output_private.jpg'." << std::endl;
 }
 
 // Function to replace bounding boxes with emoji image using NPP for resizing and applying blending
@@ -496,7 +492,7 @@ int main(int argc, char *argv[])
     cxxopts::Options options("cudacatify", "Process video or image with emoji overlays");
 
     // Define options (without onnx_model, image, or video in this block)
-    options.add_options()("emoji", "Path to the emoji image", cxxopts::value<std::string>()->default_value("./data/input/kitty_emoji.png"))("conf_thres", "Confidence threshold", cxxopts::value<float>()->default_value("0.5"))("iou_thres", "IoU threshold", cxxopts::value<float>()->default_value("0.5"))("blend_thresh", "Blend threshold", cxxopts::value<float>()->default_value("1.0"))("output_dir", "Output directory", cxxopts::value<std::string>()->default_value("./data/output/"))("help", "Print help");
+    options.add_options()("emoji", "Path to the emoji image", cxxopts::value<std::string>()->default_value("./data/images/kitty_emoji.png"))("conf_thres", "Confidence threshold", cxxopts::value<float>()->default_value("0.5"))("iou_thres", "IoU threshold", cxxopts::value<float>()->default_value("0.5"))("blend_thresh", "Blend threshold", cxxopts::value<float>()->default_value("1.0"))("output_dir", "Output directory", cxxopts::value<std::string>()->default_value("./results/"))("help", "Print help");
 
     // Add positional arguments (onnx_model, input)
     options.add_options()("onnx_model", "Path to the ONNX model", cxxopts::value<std::string>())("input", "Path to the input (image or video)", cxxopts::value<std::string>());

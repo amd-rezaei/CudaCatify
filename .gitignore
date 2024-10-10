@@ -22,4 +22,4 @@ workspace/
 bin/
 dump/
 obj/
-
+results/*
