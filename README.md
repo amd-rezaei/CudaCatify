@@ -34,6 +34,33 @@ sudo cp *.a /usr/lib
 
 You also need to ensure that ONNX Runtime is installed and accessible. You can download and build ONNX Runtime from its official [GitHub repository](https://github.com/microsoft/onnxruntime).
 
+## How to Get the YOLOv5 ONNX Model
+
+This project includes a Git submodule for the YOLOv5 model, which contains the necessary ONNX model files. To access it, ensure that you have cloned the submodule as part of the project.
+
+If you haven't initialized the submodule yet, run the following commands after cloning the repository:
+
+```bash
+git submodule init
+git submodule update
+```
+
+This will fetch the contents of the `FaceID-YOLOV5.ArcFace` submodule.
+
+The ONNX model can be found in the following location after initializing the submodule:
+
+```bash
+./submodules/FaceID-YOLOV5.ArcFace/yolov5m-face.onnx
+```
+
+When running the application, you can use this model by specifying its path:
+
+```bash
+./bin/cudacatify "./submodules/FaceID-YOLOV5.ArcFace/yolov5m-face.onnx" "/path/to/input/image.jpg"
+```
+
+This will process the input image using the ONNX model from the submodule and apply the emoji overlay to detected faces.
+
 ## Project Structure
 
 ```bash
@@ -66,19 +93,21 @@ This will compile the source files into object files and create the final execut
 
 ## How to Run the Application
 
-To run the main application, use the following `make` target:
+To run the main application, first build the project using:
 
 ```bash
-make run
+make
 ```
 
-The `run` target will execute the `cudacatify` application with the necessary arguments, including the ONNX model path and an input image. Make sure to adjust the paths in the `Makefile` for the ONNX model and input image if necessary.
+This will compile the source files into object files and create the final executable `cudacatify` in the `bin/` directory.
 
-For example:
+To run the application, execute the following command:
 
 ```bash
 ./bin/cudacatify "/path/to/yolov5m-face.onnx" "/path/to/input/image.jpg"
 ```
+
+Replace `/path/to/yolov5m-face.onnx` with the actual path to your YOLOv5 ONNX model, and `/path/to/input/image.jpg` with the path to the input image you want to process.
 
 This will process the input image, detect faces, and replace them with the specified emoji.
 
@@ -105,7 +134,6 @@ This will remove the object files in the `obj/` directory and the executable fil
 ## Additional Notes
 
 - Ensure that the paths to ONNX Runtime, CUDA, and OpenCV libraries and include directories are correctly set in the `Makefile`.
-- The application expects the ONNX model and input images to be available at the specified paths. You can modify the paths in the `Makefile` under the `run` target if needed.
 
 ## License
 

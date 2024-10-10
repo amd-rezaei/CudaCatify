@@ -79,7 +79,3 @@ test: $(TEST_TARGET)
 	./$(TEST_TARGET)
 	rm -f $(TEST_TARGET)
 
-
-# Run cudacatify with external arguments (for inference or main functionality)
-run: $(TARGET)
-	./$(TARGET) "$(SUBMODULE_DIR)/FaceID-YOLOV5.ArcFace/yolov5m-face.onnx" "./data/images/pedestrian.jpg"
