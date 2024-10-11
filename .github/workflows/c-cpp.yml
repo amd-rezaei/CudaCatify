@@ -28,14 +28,19 @@ jobs:
         ls -R src
 
     # Install dependencies (OpenCV, Google Test, CUDA)
+    # Step 2: Install dependencies (OpenCV, Google Test, CUDA)
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libopencv-dev libgtest-dev cmake nvidia-cuda-toolkit
+        sudo apt-get install -y libopencv-dev libgtest-dev cmake nvidia-cuda-toolkit pkg-config
         cd /usr/src/gtest
         sudo cmake .
         sudo make
         sudo cp /usr/src/googletest/googletest/lib/libgtest*.a /usr/lib/
+        # Verify if pkg-config is correctly showing OpenCV
+        pkg-config --modversion opencv4
+        pkg-config --cflags --libs opencv4  # Print the OpenCV paths for debugging
+
 
     # Download and install ONNX Runtime from the official releases
     - name: Install ONNX Runtime

@@ -1,16 +1,15 @@
 # Compiler and flags
 CXX = g++
-CXXFLAGS = -std=c++17 -I$(PWD)/include -I/usr/local/include -I/usr/local/cuda/include -I/usr/local/cuda/samples/common/inc -Isrc `pkg-config --cflags opencv4`
+CXXFLAGS = -std=c++17 `pkg-config --cflags opencv4` -I/usr/local/include -I/usr/local/cuda/include -I/usr/local/cuda/samples/common/inc -Isrc -Iinclude
 
 # Libraries
-LDFLAGS = -L/usr/local/lib -lonnxruntime -lcudart -lnppicc -lnppig -lnppial -lnppidei -lnppist `pkg-config --libs opencv4` -lgtest -lgtest_main -lpthread
+LDFLAGS = `pkg-config --libs opencv4` -L/usr/local/cuda/lib64 -L/usr/local/lib -lonnxruntime -lcudart -lnppicc -lnppig -lnppial -lnppidei -lnppist -lgtest -lgtest_main -lpthread -lstdc++
 
 # Directories
 SRC_DIR = src
 OBJ_DIR = obj
 BIN_DIR = bin
 TEST_DIR = tests
-SUBMODULE_DIR = submodules
 
 # Source files
 SRCS = $(SRC_DIR)/main.cpp \
@@ -21,12 +20,7 @@ SRCS = $(SRC_DIR)/main.cpp \
        $(SRC_DIR)/util.cpp
 
 # Object files
-OBJS = $(OBJ_DIR)/main.o \
-       $(OBJ_DIR)/nms.o \
-       $(OBJ_DIR)/preprocess.o \
-       $(OBJ_DIR)/inference.o \
-       $(OBJ_DIR)/postprocess.o \
-       $(OBJ_DIR)/util.o
+OBJS = $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
 
 # Test source files
 TEST_SRCS = $(TEST_DIR)/test_nms.cpp \
@@ -34,9 +28,7 @@ TEST_SRCS = $(TEST_DIR)/test_nms.cpp \
             $(TEST_DIR)/test_util.cpp
 
 # Test object files
-TEST_OBJS = $(OBJ_DIR)/test_nms.o \
-            $(OBJ_DIR)/test_preprocess.o \
-            $(OBJ_DIR)/test_util.o
+TEST_OBJS = $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(OBJ_DIR)/%.o)
 
 # Target executable for main application
 TARGET = $(BIN_DIR)/cudacatify
@@ -58,11 +50,11 @@ $(BIN_DIR):
 $(TARGET): $(OBJS) | $(BIN_DIR)
 	$(CXX) $(OBJS) -o $(TARGET) $(LDFLAGS)
 
-# Linking the test executable (define UNIT_TEST, and avoid compiling the main application logic)
+# Linking the test executable
 $(TEST_TARGET): $(TEST_OBJS) $(filter-out $(OBJ_DIR)/main.o, $(OBJS)) | $(BIN_DIR)
 	$(CXX) -DUNIT_TEST $(TEST_OBJS) $(filter-out $(OBJ_DIR)/main.o, $(OBJS)) -o $(TEST_TARGET) $(LDFLAGS)
 
-# Rule to compile each source file into an object file (for the main application)
+# Rule to compile each source file into an object file
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
 	$(CXX) -c $< -o $@ $(CXXFLAGS)
 
@@ -74,7 +66,7 @@ $(OBJ_DIR)/test_%.o: $(TEST_DIR)/test_%.cpp | $(OBJ_DIR)
 clean:
 	rm -f $(OBJ_DIR)/*.o $(TARGET) $(TEST_TARGET)
 
-# Run unit tests (no external arguments are needed for unit tests)
+# Run unit tests
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
 	rm -f $(TEST_TARGET)

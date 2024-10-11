@@ -2,7 +2,7 @@
 #ifndef NMS_HPP
 #define NMS_HPP
 
-#include <opencv.hpp>
+#include <opencv2/opencv.hpp>
 #include <vector>
 #include <numeric>
 

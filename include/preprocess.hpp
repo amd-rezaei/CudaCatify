@@ -5,7 +5,7 @@
 #include <npp.h>
 #include <cuda_runtime.h>
 #include <iostream>
-#include <opencv.hpp>
+#include <opencv2/opencv.hpp>
 #include <vector>
 
 // Preprocess an image for ONNX input
