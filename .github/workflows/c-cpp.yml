@@ -41,7 +41,9 @@ jobs:
         # Move headers to /usr/local/include
         sudo cp -r onnxruntime-linux-x64-1.14.1/include/* /usr/local/include/
         # Move the shared library to /usr/local/lib
-        sudo cp onnxruntime-linux-x64-1.14.1/lib/libonnxruntime.so /usr/local/lib/
+        sudo cp onnxruntime-linux-x64-1.14.1/lib/libonnxruntime.so* /usr/local/lib/
+        # Update the shared library cache
+        sudo ldconfig
 
     # Build the project
     - name: Build the project
@@ -49,6 +51,8 @@ jobs:
 
     # Run tests
     - name: Run unit tests
+      env:
+        LD_LIBRARY_PATH: /usr/local/lib  # Ensure ONNX Runtime shared lib is found
       run: make test
 
     # Clean up build artifacts
