@@ -3,7 +3,7 @@ CXX = g++
 CXXFLAGS = -std=c++17 `pkg-config --cflags opencv4` -I/usr/local/include -I/usr/local/cuda/include -I/usr/local/cuda/samples/common/inc -Isrc -Iinclude
 
 # Libraries
-LDFLAGS = `pkg-config --libs opencv4` -L/usr/local/cuda/lib64 -L/usr/local/lib -lonnxruntime -lcudart -lnppicc -lnppig -lnppial -lnppidei -lnppist -lgtest -lgtest_main -lpthread -lstdc++
+LDFLAGS = -lopencv_core -lopencv_imgproc -lopencv_highgui -lopencv_imgcodecs -lopencv_video -lopencv_videoio -L/usr/local/cuda/lib64 -L/usr/local/lib -lonnxruntime -lcudart -lnppicc -lnppig -lnppial -lnppidei -lnppist -lgtest -lgtest_main -lpthread -lstdc++
 
 # Directories
 SRC_DIR = src
