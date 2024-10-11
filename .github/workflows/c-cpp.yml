@@ -21,7 +21,7 @@ jobs:
         git submodule init
         git submodule update
 
-    # Install dependencies (OpenCV, ONNX Runtime, Google Test, CUDA)
+    # Install dependencies (OpenCV, Google Test, CUDA)
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -31,20 +31,23 @@ jobs:
         sudo make
         sudo cp /usr/src/googletest/googletest/lib/libgtest*.a /usr/lib/
 
-    # Install ONNX Runtime
+    # Download and install ONNX Runtime from the official releases
     - name: Install ONNX Runtime
       run: |
-        git clone --recursive https://github.com/microsoft/onnxruntime
-        cd onnxruntime
-        ./build.sh --config Release --parallel --build_shared_lib
-        sudo cp -r build/Linux/Release/* /usr/local/
-        sudo cp -r include/* /usr/local/include/
+        # Download the ONNX Runtime tarball
+        wget https://github.com/microsoft/onnxruntime/releases/download/v1.14.1/onnxruntime-linux-x64-1.14.1.tgz
+        # Extract the tarball
+        tar -xzf onnxruntime-linux-x64-1.14.1.tgz
+        # Move headers to /usr/local/include
+        sudo cp -r onnxruntime-linux-x64-1.14.1/include/* /usr/local/include/
+        # Move the shared library to /usr/local/lib
+        sudo cp onnxruntime-linux-x64-1.14.1/lib/libonnxruntime.so /usr/local/lib/
 
     # Build the project
     - name: Build the project
       run: make
 
-    # Run unit tests
+    # Run tests
     - name: Run unit tests
       run: make test
 
