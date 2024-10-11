@@ -11,53 +11,47 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # Step 1: Check out the repository
     - uses: actions/checkout@v4
       with:
         submodules: true  # Ensure submodules are checked out
 
-    # Step 2: Initialize and update submodules explicitly if not done automatically
+    # Initialize and update submodules explicitly if not done automatically
     - name: Initialize submodules
       run: |
         git submodule init
         git submodule update
-
-    # Step 3: Install dependencies (OpenCV, Google Test, CUDA, ONNX Runtime)
+    # Install dependencies (OpenCV, Google Test, CUDA)
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential g++ cmake wget unzip git libopencv-dev libgtest-dev nvidia-cuda-toolkit pkg-config
-
-    # Step 4: Build and install Google Test
-    - name: Build and install Google Test
-      run: |
+        sudo apt-get install -y libopencv-dev libgtest-dev cmake nvidia-cuda-toolkit
         cd /usr/src/gtest
         sudo cmake .
         sudo make
         sudo cp /usr/src/googletest/googletest/lib/libgtest*.a /usr/lib/
-
-    # Step 5: Download and install ONNX Runtime
+    # Download and install ONNX Runtime from the official releases
     - name: Install ONNX Runtime
       run: |
+        # Download the ONNX Runtime tarball
         wget https://github.com/microsoft/onnxruntime/releases/download/v1.14.1/onnxruntime-linux-x64-1.14.1.tgz
+        # Extract the tarball
         tar -xzf onnxruntime-linux-x64-1.14.1.tgz
+        # Move headers to /usr/local/include
         sudo cp -r onnxruntime-linux-x64-1.14.1/include/* /usr/local/include/
+        # Move the shared library to /usr/local/lib
         sudo cp onnxruntime-linux-x64-1.14.1/lib/libonnxruntime.so* /usr/local/lib/
+        # Update the shared library cache
         sudo ldconfig
-
-    # Step 6: Build the project
+    # Build the project
     - name: Build the project
-      run: |
-        make CXXFLAGS="-std=c++17 -I/usr/local/include -I/usr/local/cuda/include -I/usr/local/cuda/samples/common/inc -Isrc -Iinclude"
+      run: make
 
-    # Step 7: Run unit tests
+    # Run tests
     - name: Run unit tests
       env:
         LD_LIBRARY_PATH: /usr/local/lib  # Ensure ONNX Runtime shared lib is found
-      run: |
-        make test
+      run: make test
 
-    # Step 8: Clean up build artifacts
-    - name: Clean up build
-      run: |
-        make clean
+    # Clean up build artifacts
+    - name: Clean the build
+      run: make clean
