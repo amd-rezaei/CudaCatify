@@ -1,14 +1,9 @@
 # Compiler and flags
 CXX = g++
-CXXFLAGS = -std=c++17 -I/home/amd/Projects/CudaCatify/include -I/usr/local/include -I/usr/local/cuda/include -I/usr/local/cuda/samples/common/inc -Isrc `pkg-config --cflags opencv4`
+CXXFLAGS = -std=c++17 -I$(PWD)/include -I/usr/local/include -I/usr/local/cuda/include -I/usr/local/cuda/samples/common/inc -Isrc `pkg-config --cflags opencv4`
 
 # Libraries
-LDFLAGS = -L/usr/local/lib \
-           -lopencv_core -lopencv_imgproc -lopencv_highgui -lopencv_imgcodecs -lopencv_videoio \
-           -lopencv_video -lopencv_videostab -lopencv_dnn \
-           -lonnxruntime -lcudart -lnppicc -lnppig -lnppial -lnppidei -lnppist \
-           -lgtest -lgtest_main -lpthread
-
+LDFLAGS = -L/usr/local/lib -lonnxruntime -lcudart -lnppicc -lnppig -lnppial -lnppidei -lnppist `pkg-config --libs opencv4` -lgtest -lgtest_main -lpthread
 
 # Directories
 SRC_DIR = src
