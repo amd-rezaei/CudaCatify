@@ -6,6 +6,7 @@ CudaCatify is a CUDA-accelerated image and video processing application that per
 ## Table of Contents
 - [Features](#features)
 - [Prerequisites](#prerequisites)
+- [Installing Dependencies](#installing-dependencies)
 - [How to Get the YOLOv5 ONNX Model](#how-to-get-the-yolov5-onnx-model)
 - [Project Structure](#project-structure)
 - [How to Build](#how-to-build)
@@ -13,6 +14,7 @@ CudaCatify is a CUDA-accelerated image and video processing application that per
 - [Running Unit Tests](#running-unit-tests)
 - [Sample Output](#sample-output)
 - [Cleaning the Build](#cleaning-the-build)
+- [Credits](#credits)
 - [License](#license)
 
 ## Features
@@ -31,20 +33,43 @@ Before building and running the project, ensure you have the following installed
 3. **OpenCV**: Required for image and video processing.
 4. **Google Test**: For running unit tests.
 
-You can install these dependencies on Ubuntu using the following commands:
-```bash
-# Install OpenCV
-sudo apt-get install libopencv-dev
+### Installing Dependencies
 
-# Install Google Test
-sudo apt-get install libgtest-dev cmake
+To install the necessary dependencies on Ubuntu, you can run the following commands:
+
+```bash
+# Update package list and install OpenCV, Google Test, and CMake
+sudo apt-get update
+sudo apt-get install -y libopencv-dev libgtest-dev cmake nvidia-cuda-toolkit
+
+# Google Test setup
 cd /usr/src/gtest
 sudo cmake .
 sudo make
 sudo cp *.a /usr/lib
 ```
 
-You also need to ensure that ONNX Runtime is installed and accessible. You can download and build ONNX Runtime from its official [GitHub repository](https://github.com/microsoft/onnxruntime).
+### ONNX Runtime Installation
+
+To install ONNX Runtime, follow these steps:
+
+```bash
+# Download the ONNX Runtime tarball
+wget https://github.com/microsoft/onnxruntime/releases/download/v1.14.1/onnxruntime-linux-x64-1.14.1.tgz
+
+# Extract the tarball
+tar -xzf onnxruntime-linux-x64-1.14.1.tgz
+
+# Move headers and libraries to system directories
+sudo cp -r onnxruntime-linux-x64-1.14.1/include/* /usr/local/include/
+sudo cp onnxruntime-linux-x64-1.14.1/lib/libonnxruntime.so* /usr/local/lib/
+
+# Update the shared library cache
+sudo ldconfig
+
+# Clean up the tarball and extracted files
+rm -rf onnxruntime-linux-x64-1.14.1.tgz onnxruntime-linux-x64-1.14.1
+```
 
 ## How to Get the YOLOv5 ONNX Model
 
@@ -57,8 +82,6 @@ git submodule init
 git submodule update
 ```
 
-This will fetch the contents of the `FaceID-YOLOV5.ArcFace` submodule.
-
 The ONNX model can be found in the following location after initializing the submodule:
 
 ```bash
@@ -68,7 +91,7 @@ The ONNX model can be found in the following location after initializing the sub
 When running the application, you can use this model by specifying its path:
 
 ```bash
-./bin/cudacatify "./submodules/FaceID-YOLOV5.ArcFace/yolov5m-face.onnx" "/path/to/input/image.jpg"
+./bin/cudacatify "./submodules/FaceID-YOLOV5.ArcFace/yolov5m-face.onnx" "/path/to/input/image.jpg / video/video.mp4" 
 ```
 
 This will process the input image using the ONNX model from the submodule and apply the emoji overlay to detected faces.
@@ -150,6 +173,11 @@ make clean
 ```
 
 This will remove the object files in the `obj/` directory and the executable files in the `bin/` directory.
+
+## Credits
+
+- Open source videos and images from [Pexels](https://www.pexels.com).
+- ONNX model used in this project is from the [FaceID--YOLOV5.ArcFace](https://github.com/PhucNDA/FaceID--YOLOV5.ArcFace.git) repository included in the submodules.
 
 ## License
 
