@@ -12,6 +12,7 @@ CudaCatify is a CUDA-accelerated image and video processing application that per
 - [How to Build](#how-to-build)
 - [How to Run the Application](#how-to-run-the-application)
 - [Running Unit Tests](#running-unit-tests)
+- [Using the Docker Image](#using-the-docker-image)
 - [Sample Output](#sample-output)
 - [Cleaning the Build](#cleaning-the-build)
 - [Credits](#credits)
@@ -155,6 +156,78 @@ make test
 ```
 
 This will compile and execute the test suite using Google Test. The results of the tests will be displayed in the terminal.
+
+
+## Using the Docker Image
+
+You can also run CudaCatify using a Docker container. The image is available on Docker Hub and can be pulled and run as follows:
+
+### Pull the Docker Image
+
+To pull the Docker image from Docker Hub:
+
+```bash
+docker pull ahmadrezaei96/cudacatify:v1.0
+```
+
+### Running the Docker Image
+
+Once the image is pulled, you can run the application in a container:
+
+```bash
+docker run --rm ahmadrezaei96/cudacatify:v1.0
+```
+
+This will execute the Docker container, which will compile and run the application and its unit tests inside the container.
+
+### Running with Custom Images
+
+If you want to run the application with custom inputs (for example, specifying an image to process), you can mount a local directory and pass the path to the image as follows:
+
+```bash
+docker run --rm -v /path/to/local/data:/data ahmadrezaei96/cudacatify:v1.0 /data/input_image.jpg
+```
+
+Replace `/path/to/local/data` with the local path where your input images are located, and `/data/input_image.jpg` with the input image filename inside the container.
+
+### Example
+
+If your input image is stored locally at `/home/user/images/input_image.jpg`, you can run:
+
+```bash
+docker run --rm -v /home/user/images:/data ahmadrezaei96/cudacatify:v1.0 /data/input_image.jpg
+```
+
+This will process the image located at `/home/user/images/input_image.jpg` on your local machine.
+
+
+You can also run CudaCatify using a Docker container. The image is available on Docker Hub and can be pulled and run as follows:
+
+### Pull the Docker Image
+
+To pull the Docker image from Docker Hub:
+
+```bash
+docker pull ahmadrezaei96/cudacatify:v1.0
+```
+
+### Running the Docker Image
+
+Once the image is pulled, you can run the application in a container:
+
+```bash
+docker run --rm ahmadrezaei96/cudacatify:v1.0
+```
+
+This will execute the Docker container, which will compile and run the application and its unit tests inside the container.
+
+If you want to run the application with custom inputs (for example, specifying an image to process), you can mount a local directory and pass the path to the image as follows:
+
+```bash
+docker run --rm -v /path/to/local/data:/data ahmadrezaei96/cudacatify:v1.0 /data/input_image.jpg
+```
+
+Replace `/path/to/local/data` with the local path where your input images are located, and `/data/input_image.jpg` with the input image filename inside the container.
 
 ## Sample Output
 
