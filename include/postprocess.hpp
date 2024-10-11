@@ -7,7 +7,7 @@
 #include <npp.h>
 #include <cuda_runtime.h>
 #include <iostream>
-#include <opencv2/opencv.hpp>
+#include <opencv.hpp>
 #include <string>
 #include <vector>
 

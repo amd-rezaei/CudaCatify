@@ -2,7 +2,7 @@
 #ifndef INFERENCE_HPP
 #define INFERENCE_HPP
 
-#include <opencv2/opencv.hpp>
+#include <opencv.hpp>
 #include <string>
 #include <vector>
 

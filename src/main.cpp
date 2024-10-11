@@ -14,7 +14,7 @@ int main(int argc, char **argv)
 #include "inference.hpp"
 #include "postprocess.hpp"
 #include <cxxopts.hpp>
-#include <opencv2/opencv.hpp>
+#include <opencv.hpp>
 #include <filesystem>
 #include <iostream>
 
